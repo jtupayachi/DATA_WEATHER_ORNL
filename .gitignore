@@ -205,3 +205,141 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# ============================================================
+# DATA SCIENCE & MACHINE LEARNING SPECIFIC
+# ============================================================
+# GitHub file size limits:
+# - Warning: 50 MB
+# - Hard limit: 100 MB
+# - Use Git LFS for files > 100 MB
+# ============================================================
+
+# Large data files (typically > 100MB)
+*.csv
+*.parquet
+*.feather
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+*.joblib
+*.npy
+*.npz
+
+# Exclude specific important CSVs (whitelist)
+# Uncomment these lines to track specific small result files:
+# !comprehensive_results_*.csv
+# !*_results.csv
+# !readme.md
+
+# Model artifacts
+*.h5
+*.hdf5
+*.ckpt
+*.pt
+*.pth
+*.onnx
+*.pb
+*.tflite
+*.weights
+*.model
+*.mdl
+models/
+checkpoints/
+saved_models/
+trained_models/
+
+# LightGBM/XGBoost specific
+*.txt.model
+lgbm_model_*.txt
+
+# TensorBoard logs
+logs/
+runs/
+tensorboard/
+tb_logs/
+
+# Experiment tracking (MLflow, Weights & Biases, etc.)
+mlruns/
+wandb/
+.neptune/
+lightning_logs/
+
+# Jupyter Notebook outputs & checkpoints
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+**/.ipynb_checkpoints/
+
+# Large output files from notebooks
+*_output/
+output/
+results/
+viz_maps/*.png
+viz_maps/*.jpg
+viz_maps/*.pdf
+
+# Data directories (large datasets)
+data/raw/
+data/processed/
+data/interim/
+data/external/
+data/*.csv
+data/*.parquet
+
+# Keep data structure documentation
+!data/README.md
+!data/.gitkeep
+
+# Temporary files
+*.tmp
+*.temp
+*_temp.py
+*_backup.*
+scratch/
+temp/
+tmp/
+
+# OS-specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE specific
+.vscode/
+.idea/
+*.code-workspace
+
+# LaTeX auxiliary files
+*.aux
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.out
+*.toc
+*.lof
+*.lot
+
+# Large log/output files
+*.log
+*.out
+out_*.txt
+*.txt4
+*_execution_*.sh.log
+
+# Compressed files (usually large)
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
