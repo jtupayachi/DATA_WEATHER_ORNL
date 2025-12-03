@@ -475,6 +475,12 @@ def prepare_data(df: pd.DataFrame, target_col: str, forecast_horizon: str = '6ho
     
     X = df[numeric_cols].copy()
     
+    # Drop columns that are entirely NaN (can't be filled)
+    X = X.dropna(axis=1, how='all')
+    
+    # Handle remaining NaN values using forward-fill then backward-fill (appropriate for time series)
+    X = X.ffill().bfill()
+    
     # Create target with forecast horizon shift
     horizon_steps = FORECAST_HORIZONS[forecast_horizon]
     
