@@ -1,0 +1,100 @@
+{
+  "experiment": {
+    "timestamp": "20251119_192856",
+    "description": "Multi-event temporal forecasting with enhanced metrics"
+  },
+  "events": {
+    "target_events": [
+      "event_E3_LowTemp_lt0",
+      "event_E4_HighWind_Peak_gt25",
+      "event_E5_LowWind_lt2",
+      "event_E6_HighTemp_gt24"
+    ],
+    "horizon": "6hours",
+    "horizon_steps": 24
+  },
+  "features": {
+    "lag_config": "medium",
+    "lags": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      24
+    ],
+    "rolling_windows": [
+      4,
+      12,
+      24,
+      96
+    ]
+  },
+  "models": {
+    "models_trained": [
+      "lightgbm",
+      "xgboost"
+    ],
+    "n_splits": 5,
+    "use_class_weights": true,
+    "device": "cuda"
+  },
+  "lightgbm_params": {
+    "objective": "binary",
+    "metric": "auc",
+    "boosting_type": "gbdt",
+    "is_unbalance": true,
+    "device": "cpu",
+    "num_leaves": 31,
+    "max_depth": -1,
+    "learning_rate": 0.05,
+    "n_estimators": 1000,
+    "feature_fraction": 0.9,
+    "bagging_fraction": 0.8,
+    "bagging_freq": 5,
+    "min_child_samples": 20,
+    "min_child_weight": 0.001,
+    "min_split_gain": 0.0,
+    "reg_alpha": 0.0,
+    "reg_lambda": 0.0,
+    "subsample": 0.8,
+    "subsample_freq": 1,
+    "colsample_bytree": 0.9,
+    "verbose": -1,
+    "random_state": 42,
+    "early_stopping_rounds": 50
+  },
+  "xgboost_params": {
+    "objective": "binary:logistic",
+    "eval_metric": "auc",
+    "max_depth": 6,
+    "min_child_weight": 1,
+    "learning_rate": 0.05,
+    "n_estimators": 1000,
+    "subsample": 0.8,
+    "colsample_bytree": 0.9,
+    "colsample_bylevel": 1.0,
+    "colsample_bynode": 1.0,
+    "gamma": 0,
+    "reg_alpha": 0,
+    "reg_lambda": 1,
+    "scale_pos_weight": 1,
+    "max_delta_step": 0,
+    "random_state": 42,
+    "tree_method": "hist",
+    "verbosity": 0,
+    "early_stopping_rounds": 50
+  },
+  "metrics": [
+    "accuracy",
+    "balanced_accuracy",
+    "precision",
+    "recall",
+    "f1",
+    "auc_roc",
+    "auc_pr",
+    "specificity",
+    "mcc",
+    "cohen_kappa"
+  ]
+}

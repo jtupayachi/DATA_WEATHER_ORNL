@@ -1,0 +1,70 @@
+{
+  "experiment": {
+    "timestamp": "20251126_145258",
+    "description": "Multi-event temporal forecasting with deep learning (GRU & LSTM)"
+  },
+  "events": {
+    "target_events": [
+      "event_E3_LowTemp_lt0",
+      "event_E4_HighWind_Peak_gt25",
+      "event_E5_LowWind_lt2",
+      "event_E6_HighTemp_gt24"
+    ],
+    "horizon": "6hours",
+    "horizon_steps": 24
+  },
+  "features": {
+    "lag_config": "medium",
+    "lags": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      24
+    ],
+    "rolling_windows": [
+      4,
+      12,
+      24,
+      96
+    ]
+  },
+  "models": {
+    "models_trained": [
+      "gru",
+      "lstm"
+    ],
+    "n_splits": 5,
+    "use_class_weights": true,
+    "device": "cuda",
+    "sequence_length": 24,
+    "batch_size": 64,
+    "learning_rate": 0.001,
+    "num_epochs": 100
+  },
+  "gru_params": {
+    "hidden_dim": 128,
+    "num_layers": 2,
+    "dropout": 0.3,
+    "bidirectional": true
+  },
+  "lstm_params": {
+    "hidden_dim": 128,
+    "num_layers": 2,
+    "dropout": 0.3,
+    "bidirectional": true
+  },
+  "metrics": [
+    "accuracy",
+    "balanced_accuracy",
+    "precision",
+    "recall",
+    "f1",
+    "auc_roc",
+    "auc_pr",
+    "specificity",
+    "mcc",
+    "cohen_kappa"
+  ]
+}
