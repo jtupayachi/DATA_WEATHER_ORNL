@@ -1,0 +1,100 @@
+{
+  "tower_coordinates": {
+    "TOWA": {
+      "lat": 35.9312,
+      "lon": -84.3108,
+      "elevation_m": 247,
+      "name": "Tower A - Main Campus",
+      "terrain_type": "Valley Slope",
+      "slope_deg": 5.2,
+      "aspect_deg": 336,
+      "canopy_cover_pct": 20,
+      "dist_to_ridge_m": 320,
+      "soil_type": "Loam",
+      "land_use": "Grassland",
+      "color": "#e41a1c"
+    },
+    "TOWB": {
+      "lat": 35.9285,
+      "lon": -84.3045,
+      "elevation_m": 278,
+      "name": "Tower B - East Ridge",
+      "terrain_type": "Ridge Slope",
+      "slope_deg": 16.2,
+      "aspect_deg": 90,
+      "canopy_cover_pct": 50,
+      "dist_to_ridge_m": 45,
+      "soil_type": "Sandy Loam",
+      "land_use": "Mixed Forest",
+      "color": "#377eb8"
+    },
+    "TOWD": {
+      "lat": 35.935,
+      "lon": -84.32,
+      "elevation_m": 287,
+      "name": "Tower D - West Valley",
+      "terrain_type": "Ridge Slope",
+      "slope_deg": 14.6,
+      "aspect_deg": 270,
+      "canopy_cover_pct": 55,
+      "dist_to_ridge_m": 0,
+      "soil_type": "Sandy Loam",
+      "land_use": "Deciduous Forest",
+      "color": "#4daf4a"
+    },
+    "TOWF": {
+      "lat": 35.922,
+      "lon": -84.315,
+      "elevation_m": 274,
+      "name": "Tower F - South Field",
+      "terrain_type": "Ridge Slope",
+      "slope_deg": 17.7,
+      "aspect_deg": 90,
+      "canopy_cover_pct": 48,
+      "dist_to_ridge_m": 65,
+      "soil_type": "Sandy Loam",
+      "land_use": "Mixed Forest",
+      "color": "#984ea3"
+    },
+    "TOWS": {
+      "lat": 35.938,
+      "lon": -84.298,
+      "elevation_m": 280,
+      "name": "Tower S - North Summit",
+      "terrain_type": "Ridge Slope",
+      "slope_deg": 8.8,
+      "aspect_deg": 342,
+      "canopy_cover_pct": 51,
+      "dist_to_ridge_m": 35,
+      "soil_type": "Sandy Loam",
+      "land_use": "Deciduous Forest",
+      "color": "#ff7f00"
+    },
+    "TOWY": {
+      "lat": 35.9255,
+      "lon": -84.325,
+      "elevation_m": 262,
+      "name": "Tower Y - Southwest",
+      "terrain_type": "Valley Slope",
+      "slope_deg": 11.4,
+      "aspect_deg": 333,
+      "canopy_cover_pct": 27,
+      "dist_to_ridge_m": 200,
+      "soil_type": "Loam",
+      "land_use": "Shrubland",
+      "color": "#a65628"
+    }
+  },
+  "region_info": {
+    "name": "Oak Ridge National Laboratory (ORNL)",
+    "state": "Tennessee, USA",
+    "center_lat": 35.931,
+    "center_lon": -84.31,
+    "terrain": "Ridge and Valley Province, Appalachian Region",
+    "climate": "Humid subtropical (K\u00f6ppen: Cfa)",
+    "avg_annual_temp_c": 14.4,
+    "avg_annual_precip_mm": 1370,
+    "prevailing_wind": "Southwest"
+  },
+  "generated": "2025-12-08T20:52:50.937133"
+}

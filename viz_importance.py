@@ -1048,18 +1048,43 @@ def create_summary_dashboard(df: pd.DataFrame, output_folder: str = None):
     plt.close()
 
 
-def generate_statistical_report(df: pd.DataFrame, output_folder: str = None):
+def generate_statistical_report(df: pd.DataFrame, output_folder: str = None, folder_path: str = None):
     """
-    Generate a comprehensive text report with statistical highlights and significance tests.
+    Generate a comprehensive text report with statistical highlights.
+    Pulls model performance data from summary_results.csv if available.
     """
     towers = sorted(df['tower'].unique())
     events = sorted(df['event'].unique())
     
     report_lines = []
     
+    # Try to load model performance data from CSV files
+    summary_df = None
+    best_event_df = None
+    best_tower_df = None
+    
+    # Determine the base folder path
+    base_folder = folder_path if folder_path else (os.path.dirname(output_folder) if output_folder else None)
+    
+    if base_folder:
+        summary_path = os.path.join(base_folder, 'summary_results.csv')
+        best_event_path = os.path.join(base_folder, 'best_models_per_event.csv')
+        best_tower_path = os.path.join(base_folder, 'best_models_per_tower.csv')
+        best_tower_event_path = os.path.join(base_folder, 'best_models_per_tower_event.csv')
+        
+        if os.path.exists(summary_path):
+            summary_df = pd.read_csv(summary_path)
+            print(f"Loaded model performance from: {summary_path}")
+        if os.path.exists(best_event_path):
+            best_event_df = pd.read_csv(best_event_path)
+        if os.path.exists(best_tower_path):
+            best_tower_df = pd.read_csv(best_tower_path)
+        if os.path.exists(best_tower_event_path):
+            best_tower_event_df = pd.read_csv(best_tower_event_path)
+    
     # Header
     report_lines.append("=" * 80)
-    report_lines.append("       FEATURE IMPORTANCE STATISTICAL REPORT")
+    report_lines.append("       FEATURE IMPORTANCE & MODEL PERFORMANCE REPORT")
     report_lines.append("=" * 80)
     report_lines.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     report_lines.append(f"Towers analyzed: {', '.join(towers)}")
@@ -1079,14 +1104,14 @@ def generate_statistical_report(df: pd.DataFrame, output_folder: str = None):
     report_lines.append(f"Terrain: {REGION_INFO['terrain']}")
     report_lines.append(f"Climate: {REGION_INFO['climate']}")
     report_lines.append("")
-    report_lines.append("Tower Locations:")
+    report_lines.append("Tower Locations & Terrain Features:")
     report_lines.append("-" * 80)
-    report_lines.append(f"{'Tower':<8} {'Name':<30} {'Latitude':<12} {'Longitude':<12} {'Elevation':<12}")
+    report_lines.append(f"{'Tower':<8} {'Terrain Type':<15} {'Elevation':<10} {'Slope':<8} {'Canopy%':<10} {'Land Use':<18}")
     report_lines.append("-" * 80)
     for tower in towers:
         if tower in TOWER_COORDINATES:
-            coords = TOWER_COORDINATES[tower]
-            report_lines.append(f"{tower:<8} {coords['name']:<30} {coords['lat']:<12.4f} {coords['lon']:<12.4f} {coords['elevation_m']:<10}m")
+            c = TOWER_COORDINATES[tower]
+            report_lines.append(f"{tower:<8} {c['terrain_type']:<15} {c['elevation_m']:<8}m  {c['slope_deg']:<6.1f}°  {c['canopy_cover_pct']:<8}%  {c['land_use']:<18}")
     
     # Calculate spatial spread
     lats = [TOWER_COORDINATES[t]['lat'] for t in towers if t in TOWER_COORDINATES]
@@ -1094,7 +1119,7 @@ def generate_statistical_report(df: pd.DataFrame, output_folder: str = None):
     elevs = [TOWER_COORDINATES[t]['elevation_m'] for t in towers if t in TOWER_COORDINATES]
     
     if lats and lons:
-        lat_spread_km = (max(lats) - min(lats)) * 111  # approx km per degree
+        lat_spread_km = (max(lats) - min(lats)) * 111
         lon_spread_km = (max(lons) - min(lons)) * 111 * np.cos(np.radians(np.mean(lats)))
         report_lines.append("")
         report_lines.append(f"Spatial Extent: ~{lat_spread_km:.2f} km (N-S) x ~{abs(lon_spread_km):.2f} km (E-W)")
@@ -1102,10 +1127,62 @@ def generate_statistical_report(df: pd.DataFrame, output_folder: str = None):
     report_lines.append("")
     
     # =========================================================================
+    # MODEL PERFORMANCE FROM CSV (if available)
+    # =========================================================================
+    if best_event_df is not None:
+        report_lines.append("=" * 80)
+        report_lines.append("MODEL PERFORMANCE SUMMARY (from summary_results.csv)")
+        report_lines.append("=" * 80)
+        
+        report_lines.append("\n>> BEST MODEL PERFORMANCE BY EVENT:")
+        report_lines.append("-" * 80)
+        report_lines.append(f"{'Event':<30} {'Avg Event Rate':<15} {'Best AUC-ROC':<12} {'Best Model':<12} {'Best Tower':<10}")
+        report_lines.append("-" * 80)
+        
+        for _, row in best_event_df.iterrows():
+            event_name = row['event'].replace('event_', '').replace('_', ' ')
+            # Get best AUC between lightgbm and xgboost
+            lgb_auc = row.get('lightgbm_best_auc_roc', 0)
+            xgb_auc = row.get('xgboost_best_auc_roc', 0)
+            if lgb_auc >= xgb_auc:
+                best_auc = lgb_auc
+                best_model = 'LightGBM'
+                best_tower = row.get('lightgbm_best_auc_roc_tower', 'N/A')
+            else:
+                best_auc = xgb_auc
+                best_model = 'XGBoost'
+                best_tower = row.get('xgboost_best_auc_roc_tower', 'N/A')
+            
+            report_lines.append(f"{event_name:<30} {row['avg_event_rate']*100:>12.2f}%  {best_auc:>10.4f}  {best_model:<12} {best_tower:<10}")
+        
+        report_lines.append("")
+    
+    if summary_df is not None and 'best_tower_event_df' in dir():
+        report_lines.append("\n>> DETAILED MODEL PERFORMANCE BY TOWER-EVENT:")
+        report_lines.append("-" * 100)
+        report_lines.append(f"{'Tower':<8} {'Event':<25} {'Event Rate':<12} {'Best AUC':<10} {'Best Model':<12} {'Accuracy':<10}")
+        report_lines.append("-" * 100)
+        
+        for _, row in best_tower_event_df.iterrows():
+            event_name = row['event'].replace('event_', '').replace('_', ' ')[:22]
+            best_model = row.get('best_model', 'N/A')
+            best_auc = row.get('best_auc', 0)
+            
+            # Get accuracy from best model
+            if best_model == 'lightgbm':
+                accuracy = row.get('lightgbm_accuracy', 0)
+            else:
+                accuracy = row.get('xgboost_accuracy', 0)
+            
+            report_lines.append(f"{row['tower']:<8} {event_name:<25} {row['event_rate']*100:>10.2f}%  {best_auc:>8.4f}  {best_model:<12} {accuracy*100:>8.2f}%")
+        
+        report_lines.append("")
+    
+    # =========================================================================
     # SECTION 1: GLOBAL TOP FEATURES
     # =========================================================================
     report_lines.append("=" * 80)
-    report_lines.append("SECTION 1: GLOBAL TOP FEATURES (Averaged Across All Towers & Events)")
+    report_lines.append("FEATURE IMPORTANCE: GLOBAL TOP FEATURES")
     report_lines.append("=" * 80)
     
     global_importance = (df.groupby('feature')['importance_pct']
@@ -1120,14 +1197,15 @@ def generate_statistical_report(df: pd.DataFrame, output_folder: str = None):
     report_lines.append("-" * 80)
     
     for rank, (_, row) in enumerate(global_importance.head(20).iterrows(), 1):
-        report_lines.append(f"{rank:<5} {row['feature']:<40} {row['mean']:>8.3f}  {row['std']:>8.3f}  {row['min']:>8.3f}  {row['max']:>8.3f}")
+        std_val = row['std'] if pd.notna(row['std']) else 0
+        report_lines.append(f"{rank:<5} {row['feature']:<40} {row['mean']:>8.3f}  {std_val:>8.3f}  {row['min']:>8.3f}  {row['max']:>8.3f}")
     
     # =========================================================================
     # SECTION 2: TOP FEATURES PER EVENT
     # =========================================================================
     report_lines.append("\n")
     report_lines.append("=" * 80)
-    report_lines.append("SECTION 2: TOP FEATURES PER EVENT (Target Variable)")
+    report_lines.append("FEATURE IMPORTANCE: TOP FEATURES PER EVENT")
     report_lines.append("=" * 80)
     
     for event in events:
@@ -1154,11 +1232,15 @@ def generate_statistical_report(df: pd.DataFrame, output_folder: str = None):
     # =========================================================================
     report_lines.append("\n")
     report_lines.append("=" * 80)
-    report_lines.append("SECTION 3: TOP FEATURES PER TOWER")
+    report_lines.append("FEATURE IMPORTANCE: TOP FEATURES PER TOWER")
     report_lines.append("=" * 80)
     
     for tower in towers:
-        report_lines.append(f"\n>> TOWER: {tower}")
+        tower_info = TOWER_COORDINATES.get(tower, {})
+        terrain = tower_info.get('terrain_type', 'Unknown')
+        elev = tower_info.get('elevation_m', 'N/A')
+        
+        report_lines.append(f"\n>> TOWER: {tower} ({terrain}, {elev}m)")
         report_lines.append("-" * 60)
         
         tower_df = df[df['tower'] == tower]
@@ -1176,133 +1258,11 @@ def generate_statistical_report(df: pd.DataFrame, output_folder: str = None):
             report_lines.append(f"{rank:<5} {row['feature']:<45} {row['mean']:>10.3f}  {std_str:>10}")
     
     # =========================================================================
-    # SECTION 4: STATISTICAL TESTS - KRUSKAL-WALLIS (Non-parametric ANOVA)
+    # SECTION: VARIABLE CATEGORY ANALYSIS
     # =========================================================================
     report_lines.append("\n")
     report_lines.append("=" * 80)
-    report_lines.append("SECTION 4: STATISTICAL SIGNIFICANCE TESTS")
-    report_lines.append("=" * 80)
-    
-    # 4.1 Kruskal-Wallis test across towers for each event
-    report_lines.append("\n4.1 Kruskal-Wallis Test: Feature Importance Differences Across Towers")
-    report_lines.append("    (Tests if importance distributions differ significantly between towers)")
-    report_lines.append("-" * 80)
-    
-    for event in events:
-        event_display = event.replace('_', ' ').replace('lt', '<').replace('gt', '>')
-        event_df = df[df['event'] == event]
-        
-        # Get importance values per tower
-        tower_groups = [event_df[event_df['tower'] == t]['importance_pct'].values for t in towers]
-        tower_groups = [g for g in tower_groups if len(g) > 0]
-        
-        if len(tower_groups) >= 2:
-            try:
-                stat, p_value = stats.kruskal(*tower_groups)
-                significance = "***" if p_value < 0.001 else "**" if p_value < 0.01 else "*" if p_value < 0.05 else "ns"
-                report_lines.append(f"\n  Event: {event_display}")
-                report_lines.append(f"    H-statistic: {stat:.4f}")
-                report_lines.append(f"    p-value: {p_value:.6f} {significance}")
-                report_lines.append(f"    Interpretation: {'Significant difference' if p_value < 0.05 else 'No significant difference'} between towers")
-            except Exception as e:
-                report_lines.append(f"\n  Event: {event_display}")
-                report_lines.append(f"    Could not perform test: {str(e)}")
-    
-    # 4.2 Kruskal-Wallis test across events for each tower
-    report_lines.append("\n\n4.2 Kruskal-Wallis Test: Feature Importance Differences Across Events")
-    report_lines.append("    (Tests if importance distributions differ significantly between events)")
-    report_lines.append("-" * 80)
-    
-    for tower in towers:
-        tower_df = df[df['tower'] == tower]
-        
-        # Get importance values per event
-        event_groups = [tower_df[tower_df['event'] == e]['importance_pct'].values for e in events]
-        event_groups = [g for g in event_groups if len(g) > 0]
-        
-        if len(event_groups) >= 2:
-            try:
-                stat, p_value = stats.kruskal(*event_groups)
-                significance = "***" if p_value < 0.001 else "**" if p_value < 0.01 else "*" if p_value < 0.05 else "ns"
-                report_lines.append(f"\n  Tower: {tower}")
-                report_lines.append(f"    H-statistic: {stat:.4f}")
-                report_lines.append(f"    p-value: {p_value:.6f} {significance}")
-                report_lines.append(f"    Interpretation: {'Significant difference' if p_value < 0.05 else 'No significant difference'} between events")
-            except Exception as e:
-                report_lines.append(f"\n  Tower: {tower}")
-                report_lines.append(f"    Could not perform test: {str(e)}")
-    
-    # =========================================================================
-    # SECTION 5: PAIRWISE COMPARISONS (Mann-Whitney U Test)
-    # =========================================================================
-    report_lines.append("\n")
-    report_lines.append("=" * 80)
-    report_lines.append("SECTION 5: PAIRWISE TOWER COMPARISONS (Mann-Whitney U Test)")
-    report_lines.append("=" * 80)
-    report_lines.append("\nComparing feature importance distributions between tower pairs:")
-    report_lines.append("(Bonferroni-corrected significance level for multiple comparisons)")
-    
-    n_comparisons = len(list(combinations(towers, 2)))
-    alpha_corrected = 0.05 / n_comparisons if n_comparisons > 0 else 0.05
-    report_lines.append(f"Corrected alpha: {alpha_corrected:.6f} (original: 0.05, n_comparisons: {n_comparisons})")
-    report_lines.append("-" * 80)
-    
-    for event in events:
-        event_display = event.replace('_', ' ').replace('lt', '<').replace('gt', '>')
-        report_lines.append(f"\n  Event: {event_display}")
-        event_df = df[df['event'] == event]
-        
-        for t1, t2 in combinations(towers, 2):
-            g1 = event_df[event_df['tower'] == t1]['importance_pct'].values
-            g2 = event_df[event_df['tower'] == t2]['importance_pct'].values
-            
-            if len(g1) > 0 and len(g2) > 0:
-                try:
-                    stat, p_value = stats.mannwhitneyu(g1, g2, alternative='two-sided')
-                    significance = "***" if p_value < 0.001 else "**" if p_value < 0.01 else "*" if p_value < alpha_corrected else "ns"
-                    report_lines.append(f"    {t1} vs {t2}: U={stat:.1f}, p={p_value:.6f} {significance}")
-                except Exception:
-                    pass
-    
-    # =========================================================================
-    # SECTION 6: FEATURE CONSISTENCY ANALYSIS
-    # =========================================================================
-    report_lines.append("\n")
-    report_lines.append("=" * 80)
-    report_lines.append("SECTION 6: FEATURE CONSISTENCY ANALYSIS")
-    report_lines.append("=" * 80)
-    report_lines.append("\nFeatures that appear in Top 10 across multiple tower-event combinations:")
-    report_lines.append("-" * 80)
-    
-    # Count how often each feature appears in top 10 for each tower-event
-    top_feature_counts = {}
-    for tower in towers:
-        for event in events:
-            subset = df[(df['tower'] == tower) & (df['event'] == event)]
-            top10 = subset.nsmallest(10, 'rank')['feature'].tolist()
-            for feat in top10:
-                if feat not in top_feature_counts:
-                    top_feature_counts[feat] = 0
-                top_feature_counts[feat] += 1
-    
-    # Sort by frequency
-    sorted_features = sorted(top_feature_counts.items(), key=lambda x: x[1], reverse=True)
-    total_combinations = len(towers) * len(events)
-    
-    report_lines.append(f"\n{'Feature':<50} {'Count':<10} {'%':<10} {'Consistency':<15}")
-    report_lines.append("-" * 80)
-    
-    for feat, count in sorted_features[:20]:
-        pct = (count / total_combinations) * 100
-        consistency = "Very High" if pct >= 80 else "High" if pct >= 60 else "Moderate" if pct >= 40 else "Low"
-        report_lines.append(f"{feat:<50} {count:<10} {pct:>6.1f}%    {consistency:<15}")
-    
-    # =========================================================================
-    # SECTION 7: VARIABLE CATEGORY ANALYSIS
-    # =========================================================================
-    report_lines.append("\n")
-    report_lines.append("=" * 80)
-    report_lines.append("SECTION 7: VARIABLE CATEGORY IMPORTANCE SUMMARY")
+    report_lines.append("VARIABLE CATEGORY IMPORTANCE SUMMARY")
     report_lines.append("=" * 80)
     
     def get_category(feature):
@@ -1322,20 +1282,17 @@ def generate_statistical_report(df: pd.DataFrame, output_folder: str = None):
     report_lines.append("-" * 80)
     
     for _, row in cat_summary.head(15).iterrows():
-        report_lines.append(f"{row['category']:<25} {row['total']:>10.2f}  {row['mean']:>10.3f}  {row['std']:>10.3f}  {int(row['count']):>8}")
+        std_val = row['std'] if pd.notna(row['std']) else 0
+        report_lines.append(f"{row['category']:<25} {row['total']:>10.2f}  {row['mean']:>10.3f}  {std_val:>10.3f}  {int(row['count']):>8}")
     
     # =========================================================================
-    # SECTION 8: KEY FINDINGS & HIGHLIGHTS
+    # SPATIAL ANALYSIS
     # =========================================================================
     report_lines.append("\n")
     report_lines.append("=" * 80)
-    report_lines.append("SECTION 8: SPATIAL ANALYSIS OF FEATURE IMPORTANCE")
+    report_lines.append("SPATIAL ANALYSIS: GEOGRAPHIC FEATURES vs IMPORTANCE")
     report_lines.append("=" * 80)
     
-    report_lines.append("\nFeature importance vs. geographic position (elevation, lat, lon):")
-    report_lines.append("-" * 80)
-    
-    # Calculate top N importance sum per tower
     tower_importance_data = []
     for tower in towers:
         if tower not in TOWER_COORDINATES:
@@ -1345,62 +1302,54 @@ def generate_statistical_report(df: pd.DataFrame, output_folder: str = None):
         coords = TOWER_COORDINATES[tower]
         tower_importance_data.append({
             'tower': tower,
+            'terrain': coords['terrain_type'],
             'lat': coords['lat'],
             'lon': coords['lon'],
             'elevation': coords['elevation_m'],
+            'slope': coords['slope_deg'],
+            'canopy': coords['canopy_cover_pct'],
             'top5_importance': top5_sum
         })
     
     if tower_importance_data:
         t_df = pd.DataFrame(tower_importance_data)
-        
-        # Rank towers by importance
         t_df = t_df.sort_values('top5_importance', ascending=False)
-        report_lines.append(f"\n{'Rank':<6} {'Tower':<8} {'Top5 Imp%':<12} {'Elevation':<12} {'Lat':<10} {'Lon':<10}")
-        report_lines.append("-" * 70)
-        for rank, (_, row) in enumerate(t_df.iterrows(), 1):
-            report_lines.append(f"{rank:<6} {row['tower']:<8} {row['top5_importance']:>10.2f}  {row['elevation']:>10}m  {row['lat']:>8.4f}  {row['lon']:>8.4f}")
         
-        # Calculate correlation between elevation and importance
-        if len(t_df) >= 3:
-            corr_elev, p_elev = spearmanr(t_df['elevation'], t_df['top5_importance'])
-            report_lines.append(f"\nSpearman correlation (Elevation vs Top5 Importance): r={corr_elev:.3f}, p={p_elev:.4f}")
-            if p_elev < 0.05:
-                direction = "Higher" if corr_elev > 0 else "Lower"
-                report_lines.append(f"  >> {direction} elevation towers tend to have {'more' if corr_elev > 0 else 'less'} concentrated feature importance")
-            else:
-                report_lines.append("  >> No significant correlation between elevation and feature importance")
+        report_lines.append(f"\n{'Rank':<6} {'Tower':<8} {'Terrain':<15} {'Elev(m)':<10} {'Slope':<8} {'Canopy%':<10} {'Top5 Imp%':<12}")
+        report_lines.append("-" * 80)
+        for rank, (_, row) in enumerate(t_df.iterrows(), 1):
+            report_lines.append(f"{rank:<6} {row['tower']:<8} {row['terrain']:<15} {row['elevation']:<10} {row['slope']:<6.1f}°  {row['canopy']:<8}%  {row['top5_importance']:>10.2f}")
+        
+        # Correlations with geographic features
+        report_lines.append("\nCorrelations (Spearman) with Top 5 Feature Importance:")
+        report_lines.append("-" * 60)
+        
+        for feature_name, feature_col in [('Elevation', 'elevation'), ('Slope', 'slope'), ('Canopy Cover', 'canopy')]:
+            if len(t_df) >= 3:
+                corr, pval = spearmanr(t_df[feature_col], t_df['top5_importance'])
+                sig = "***" if pval < 0.001 else "**" if pval < 0.01 else "*" if pval < 0.05 else "ns"
+                report_lines.append(f"  {feature_name:<20}: r = {corr:>6.3f}, p = {pval:.4f} {sig}")
     
-    report_lines.append("")
-    
+    # =========================================================================
+    # KEY FINDINGS
     # =========================================================================
     report_lines.append("\n")
     report_lines.append("=" * 80)
-    report_lines.append("SECTION 9: KEY FINDINGS & HIGHLIGHTS")
+    report_lines.append("KEY FINDINGS & HIGHLIGHTS")
     report_lines.append("=" * 80)
     
-    # Find the most dominant feature overall
+    # Most important feature
     top_feature = global_importance.iloc[0]
-    report_lines.append(f"\n1. MOST IMPORTANT FEATURE OVERALL:")
-    report_lines.append(f"   - {top_feature['feature']}")
-    report_lines.append(f"   - Mean importance: {top_feature['mean']:.3f}%")
-    report_lines.append(f"   - Range: {top_feature['min']:.3f}% - {top_feature['max']:.3f}%")
+    report_lines.append(f"\n1. MOST IMPORTANT FEATURE: {top_feature['feature']}")
+    report_lines.append(f"   Mean importance: {top_feature['mean']:.3f}%")
     
-    # Find the most consistent features
-    most_consistent = sorted_features[0] if sorted_features else None
-    if most_consistent:
-        report_lines.append(f"\n2. MOST CONSISTENT FEATURE (appears in Top 10 most often):")
-        report_lines.append(f"   - {most_consistent[0]}")
-        report_lines.append(f"   - Appears in Top 10 for {most_consistent[1]}/{total_combinations} tower-event combinations ({(most_consistent[1]/total_combinations)*100:.1f}%)")
-    
-    # Find the most important category
+    # Most important category
     top_category = cat_summary.iloc[0]
-    report_lines.append(f"\n3. MOST IMPORTANT VARIABLE CATEGORY:")
-    report_lines.append(f"   - {top_category['category']}")
-    report_lines.append(f"   - Total importance: {top_category['total']:.2f}%")
+    report_lines.append(f"\n2. MOST IMPORTANT CATEGORY: {top_category['category']}")
+    report_lines.append(f"   Total importance: {top_category['total']:.2f}%")
     
-    # Event-specific highlights
-    report_lines.append(f"\n4. EVENT-SPECIFIC TOP FEATURES:")
+    # Event-specific top features
+    report_lines.append(f"\n3. TOP FEATURE BY EVENT:")
     for event in events:
         event_display = event.replace('_', ' ').replace('lt', '<').replace('gt', '>')
         event_df = df[df['event'] == event]
@@ -1408,34 +1357,18 @@ def generate_statistical_report(df: pd.DataFrame, output_folder: str = None):
         top_val = event_df.groupby('feature')['importance_pct'].mean().max()
         report_lines.append(f"   - {event_display}: {top_feat} ({top_val:.2f}%)")
     
-    # Tower-specific highlights
-    report_lines.append(f"\n5. TOWER WITH HIGHEST FEATURE CONCENTRATION:")
-    tower_concentration = df.groupby('tower')['importance_pct'].agg(lambda x: x.nlargest(5).sum())
-    top_tower = tower_concentration.idxmax()
-    report_lines.append(f"   - {top_tower} (Top 5 features account for {tower_concentration[top_tower]:.2f}% of importance)")
-    
     # Geographic highlights
     if tower_importance_data:
-        highest_elev_tower = max(tower_importance_data, key=lambda x: x['elevation'])
-        lowest_elev_tower = min(tower_importance_data, key=lambda x: x['elevation'])
-        report_lines.append(f"\n6. GEOGRAPHIC HIGHLIGHTS:")
-        report_lines.append(f"   - Highest elevation tower: {highest_elev_tower['tower']} ({highest_elev_tower['elevation']}m)")
-        report_lines.append(f"   - Lowest elevation tower: {lowest_elev_tower['tower']} ({lowest_elev_tower['elevation']}m)")
-        
-        # Find northernmost and southernmost
-        north_tower = max(tower_importance_data, key=lambda x: x['lat'])
-        south_tower = min(tower_importance_data, key=lambda x: x['lat'])
-        report_lines.append(f"   - Northernmost tower: {north_tower['tower']} ({north_tower['lat']:.4f}N)")
-        report_lines.append(f"   - Southernmost tower: {south_tower['tower']} ({south_tower['lat']:.4f}N)")
+        report_lines.append(f"\n4. GEOGRAPHIC HIGHLIGHTS:")
+        highest_elev = max(tower_importance_data, key=lambda x: x['elevation'])
+        lowest_elev = min(tower_importance_data, key=lambda x: x['elevation'])
+        highest_imp = max(tower_importance_data, key=lambda x: x['top5_importance'])
+        report_lines.append(f"   - Highest elevation: {highest_elev['tower']} ({highest_elev['elevation']}m, {highest_elev['terrain']})")
+        report_lines.append(f"   - Lowest elevation: {lowest_elev['tower']} ({lowest_elev['elevation']}m, {lowest_elev['terrain']})")
+        report_lines.append(f"   - Highest Top5 importance: {highest_imp['tower']} ({highest_imp['top5_importance']:.2f}%)")
     
     # Footer
     report_lines.append("\n")
-    report_lines.append("=" * 80)
-    report_lines.append("STATISTICAL SIGNIFICANCE LEGEND:")
-    report_lines.append("  *** p < 0.001 (highly significant)")
-    report_lines.append("  **  p < 0.01  (very significant)")
-    report_lines.append("  *   p < 0.05  (significant)")
-    report_lines.append("  ns  p >= 0.05 (not significant)")
     report_lines.append("=" * 80)
     report_lines.append("END OF REPORT")
     report_lines.append("=" * 80)
@@ -1450,6 +1383,212 @@ def generate_statistical_report(df: pd.DataFrame, output_folder: str = None):
         print(f"Report saved: {report_path}")
     
     return report_text
+
+
+def run_all_visualizations(df: pd.DataFrame, folder_path: str):
+    """Execute ALL visualizations and reports automatically."""
+    
+    towers = sorted(df['tower'].unique())
+    events = sorted(df['event'].unique())
+    
+    # Create output folder for saved figures
+    output_folder = os.path.join(folder_path, 'viz_importance')
+    os.makedirs(output_folder, exist_ok=True)
+    
+    print("\n" + "="*60)
+    print("       FEATURE IMPORTANCE VISUALIZATION TOOL")
+    print("       >>> RUNNING ALL VISUALIZATIONS <<<")
+    print("="*60)
+    print(f"\nData loaded: {len(towers)} towers, {len(events)} events")
+    print(f"Towers: {', '.join(towers)}")
+    print(f"Events: {', '.join(events)}")
+    print(f"Output folder: {output_folder}")
+    print("="*60)
+    
+    # =====================================================
+    # 1. TOP FEATURES PER TOWER & EVENT (Individual plots)
+    # =====================================================
+    print("\n" + "-"*60)
+    print("[1/13] Generating top features for each tower & event...")
+    print("-"*60)
+    for tower in towers:
+        for event in events:
+            save_path = os.path.join(output_folder, f'top_features_{tower}_{event}.png')
+            try:
+                plot_top_features_by_tower_event(df, tower, event, top_n=20, save_path=save_path)
+                print(f"  ✓ {tower} - {event}")
+            except Exception as e:
+                print(f"  ✗ {tower} - {event}: {e}")
+    
+    # =====================================================
+    # 2. HEATMAPS - Compare features across towers per event
+    # =====================================================
+    print("\n" + "-"*60)
+    print("[2/13] Generating heatmaps (features across towers)...")
+    print("-"*60)
+    for event in events:
+        save_path = os.path.join(output_folder, f'heatmap_{event}.png')
+        try:
+            plot_feature_comparison_across_towers(df, event, top_n=20, save_path=save_path)
+            print(f"  ✓ Heatmap for {event}")
+        except Exception as e:
+            print(f"  ✗ Heatmap for {event}: {e}")
+    
+    # =====================================================
+    # 3. COMPARE FEATURES ACROSS EVENTS (per tower)
+    # =====================================================
+    print("\n" + "-"*60)
+    print("[3/13] Generating cross-event comparisons per tower...")
+    print("-"*60)
+    for tower in towers:
+        save_path = os.path.join(output_folder, f'cross_events_{tower}.png')
+        try:
+            plot_feature_comparison_across_events(df, tower, top_n=15, save_path=save_path)
+            print(f"  ✓ Cross-events for {tower}")
+        except Exception as e:
+            print(f"  ✗ Cross-events for {tower}: {e}")
+    
+    # =====================================================
+    # 4. GLOBAL FEATURE IMPORTANCE
+    # =====================================================
+    print("\n" + "-"*60)
+    print("[4/13] Generating global feature importance...")
+    print("-"*60)
+    save_path = os.path.join(output_folder, 'global_feature_importance.png')
+    try:
+        plot_global_feature_importance(df, top_n=25, save_path=save_path)
+        print(f"  ✓ Global feature importance")
+    except Exception as e:
+        print(f"  ✗ Global feature importance: {e}")
+    
+    # =====================================================
+    # 5. VARIABLE CATEGORY IMPORTANCE
+    # =====================================================
+    print("\n" + "-"*60)
+    print("[5/13] Generating variable category importance...")
+    print("-"*60)
+    save_path = os.path.join(output_folder, 'variable_category_importance.png')
+    try:
+        plot_variable_category_importance(df, save_path=save_path)
+        print(f"  ✓ Variable category importance")
+    except Exception as e:
+        print(f"  ✗ Variable category importance: {e}")
+    
+    # =====================================================
+    # 6. SUMMARY DASHBOARD
+    # =====================================================
+    print("\n" + "-"*60)
+    print("[6/13] Generating summary dashboard...")
+    print("-"*60)
+    try:
+        create_summary_dashboard(df, output_folder=output_folder)
+        print(f"  ✓ Summary dashboard")
+    except Exception as e:
+        print(f"  ✗ Summary dashboard: {e}")
+    
+    # =====================================================
+    # 7. ALL BASIC VISUALIZATIONS (already covered above)
+    # =====================================================
+    # Skipping - already done in steps 1-6
+    
+    # =====================================================
+    # 8. ALL TOWERS PER EVENT - Grid subplots
+    # =====================================================
+    print("\n" + "-"*60)
+    print("[8/13] Generating ALL TOWERS grid subplots per event...")
+    print("-"*60)
+    for event in events:
+        save_path = os.path.join(output_folder, f'ALL_TOWERS_{event}_grid.png')
+        try:
+            plot_all_towers_per_event(df, event, top_n=15, save_path=save_path)
+            print(f"  ✓ Grid for {event}")
+        except Exception as e:
+            print(f"  ✗ Grid for {event}: {e}")
+    
+    # =====================================================
+    # 9. ALL TOWERS PER EVENT - Dot plots (clustered)
+    # =====================================================
+    print("\n" + "-"*60)
+    print("[9/13] Generating ALL TOWERS dot plots per event...")
+    print("-"*60)
+    for event in events:
+        save_path = os.path.join(output_folder, f'ALL_TOWERS_{event}_dotplot.png')
+        try:
+            plot_grouped_bars_per_event(df, event, top_n=10, save_path=save_path)
+            print(f"  ✓ Dot plot for {event}")
+        except Exception as e:
+            print(f"  ✗ Dot plot for {event}: {e}")
+    
+    # =====================================================
+    # 10. MASTER VIEW - All towers x All events
+    # =====================================================
+    print("\n" + "-"*60)
+    print("[10/13] Generating MASTER VIEW (all towers x all events)...")
+    print("-"*60)
+    save_path = os.path.join(output_folder, 'MASTER_all_towers_all_events.png')
+    try:
+        plot_consolidated_all_events(df, top_n=15, save_path=save_path)
+        print(f"  ✓ MASTER VIEW")
+    except Exception as e:
+        print(f"  ✗ MASTER VIEW: {e}")
+    
+    # =====================================================
+    # 11. GEOGRAPHIC FEATURES VS IMPORTANCE ANALYSIS
+    # =====================================================
+    print("\n" + "-"*60)
+    print("[11/13] Generating Geographic Features vs Importance Analysis...")
+    print("-"*60)
+    try:
+        plot_geographic_features_vs_importance(df, output_folder=output_folder)
+        print(f"  ✓ Geographic features analysis")
+    except Exception as e:
+        print(f"  ✗ Geographic features analysis: {e}")
+    
+    # =====================================================
+    # 12. 3D TERRAIN-IMPORTANCE VISUALIZATION
+    # =====================================================
+    print("\n" + "-"*60)
+    print("[12/13] Generating 3D Terrain-Importance Visualizations...")
+    print("-"*60)
+    for event in events:
+        try:
+            plot_3d_terrain_importance(df, event=event, output_folder=output_folder)
+            print(f"  ✓ 3D terrain for {event}")
+        except Exception as e:
+            print(f"  ✗ 3D terrain for {event}: {e}")
+    
+    # =====================================================
+    # 13. STATISTICAL REPORT
+    # =====================================================
+    print("\n" + "-"*60)
+    print("[13/13] Generating Statistical Report...")
+    print("-"*60)
+    try:
+        report = generate_statistical_report(df, output_folder, folder_path)
+        print(f"  ✓ Statistical report generated")
+        print("\n" + "="*60)
+        print("REPORT PREVIEW (first 100 lines):")
+        print("="*60)
+        for line in report.split('\n')[:100]:
+            print(line)
+        print("\n... (see full report in output folder)")
+    except Exception as e:
+        print(f"  ✗ Statistical report: {e}")
+    
+    # =====================================================
+    # COMPLETION SUMMARY
+    # =====================================================
+    print("\n" + "="*60)
+    print("       ALL VISUALIZATIONS COMPLETED!")
+    print("="*60)
+    print(f"\nOutput folder: {output_folder}")
+    
+    # Count generated files
+    import glob
+    png_files = glob.glob(os.path.join(output_folder, '*.png'))
+    txt_files = glob.glob(os.path.join(output_folder, '*.txt'))
+    print(f"Generated {len(png_files)} PNG files and {len(txt_files)} TXT reports")
+    print("="*60)
 
 
 def interactive_menu(df: pd.DataFrame, folder_path: str):
@@ -1486,11 +1625,11 @@ def interactive_menu(df: pd.DataFrame, folder_path: str):
         print(" 10. MASTER VIEW - All towers x All events")
         print("-"*60)
         print("  === GEOGRAPHIC VIEWS ===")
-        print(" 11. [NEW] 3D Geographic View - Tower importance in 3D")
-        print(" 12. [NEW] 2D Map View - Bubble map of importance")
+        print(" 11. [NEW] Geographic Features vs Importance Analysis")
+        print(" 12. [NEW] 3D Terrain-Importance Visualization")
         print("-"*60)
         print("  === REPORTS ===")
-        print(" 13. Generate Statistical Report (.txt with geographic info)")
+        print(" 13. Generate Statistical Report (model perf from summary_results.csv)")
         print("-"*60)
         print("  0. Exit")
         print("-"*60)
@@ -1653,53 +1792,40 @@ def interactive_menu(df: pd.DataFrame, folder_path: str):
             plot_consolidated_all_events(df, top_n, save_path)
         
         elif choice == '11':
-            # 3D Geographic View
-            print(f"\nAvailable events: {', '.join(events)}")
-            event = input("Enter event name (or 'all' for combined view): ").strip()
+            # Geographic Feature Analysis (Top 5 features per tower against terrain)
+            print("\nGenerating Geographic Feature Analysis plots (one per event)...")
             
-            top_n = input("Number of top features for height (default 5): ").strip()
-            top_n = int(top_n) if top_n.isdigit() else 5
+            save = input("Save figures? (y/n): ").strip().lower() == 'y'
+            save_folder = output_folder if save else None
             
-            if event.lower() == 'all':
-                save = input("Save figure? (y/n): ").strip().lower() == 'y'
-                save_path = os.path.join(output_folder, 'geo_3d_all_events.png') if save else None
-                plot_3d_geographic_importance(df, event=None, top_n=top_n, save_path=save_path)
-            else:
-                if event not in events:
-                    print(f"Invalid event. Choose from: {events}")
-                    continue
-                save = input("Save figure? (y/n): ").strip().lower() == 'y'
-                save_path = os.path.join(output_folder, f'geo_3d_{event}.png') if save else None
-                plot_3d_geographic_importance(df, event=event, top_n=top_n, save_path=save_path)
+            plot_geographic_features_vs_importance(df, output_folder=save_folder)
         
         elif choice == '12':
-            # 2D Map View
+            # 3D Terrain-Importance Visualization
             print(f"\nAvailable events: {', '.join(events)}")
-            event = input("Enter event name (or 'all' for combined view): ").strip()
+            event = input("Enter event name (or 'all' for all events): ").strip()
             
-            top_n = input("Number of top features for bubble size (default 5): ").strip()
-            top_n = int(top_n) if top_n.isdigit() else 5
+            save = input("Save figures? (y/n): ").strip().lower() == 'y'
+            save_folder = output_folder if save else None
             
             if event.lower() == 'all':
-                save = input("Save figure? (y/n): ").strip().lower() == 'y'
-                save_path = os.path.join(output_folder, 'geo_2d_map_all_events.png') if save else None
-                plot_2d_geographic_map(df, event=None, top_n=top_n, save_path=save_path)
+                for evt in events:
+                    print(f"\n--- Plotting 3D terrain for {evt} ---")
+                    plot_3d_terrain_importance(df, event=evt, output_folder=save_folder)
             else:
                 if event not in events:
                     print(f"Invalid event. Choose from: {events}")
                     continue
-                save = input("Save figure? (y/n): ").strip().lower() == 'y'
-                save_path = os.path.join(output_folder, f'geo_2d_map_{event}.png') if save else None
-                plot_2d_geographic_map(df, event=event, top_n=top_n, save_path=save_path)
+                plot_3d_terrain_importance(df, event=event, output_folder=save_folder)
         
         elif choice == '13':
             # Generate Statistical Report
-            print("\nGenerating Statistical Report with significance tests and geographic info...")
-            report = generate_statistical_report(df, output_folder)
+            print("\nGenerating Statistical Report with model performance from summary_results.csv...")
+            report = generate_statistical_report(df, output_folder, folder_path)
             print("\n" + "="*60)
-            print("Report Preview (first 60 lines):")
+            print("Report Preview (first 80 lines):")
             print("="*60)
-            for line in report.split('\n')[:60]:
+            for line in report.split('\n')[:80]:
                 print(line)
             print("\n... (see full report in output folder)")
             
@@ -1740,8 +1866,8 @@ def main():
     df = get_combined_dataframe(data)
     print(f"\nTotal records loaded: {len(df)}")
     
-    # Run interactive menu
-    interactive_menu(df, folder_path)
+    # Run ALL visualizations automatically (no menu)
+    run_all_visualizations(df, folder_path)
 
 
 if __name__ == "__main__":

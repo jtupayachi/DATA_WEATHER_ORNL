@@ -1,0 +1,39 @@
+{
+  "TOWF_event_E4_HighWind_Peak_gt25": {
+    "params": {
+      "sequence_length": 24,
+      "batch_size": 128,
+      "learning_rate": 0.0007591104805282694,
+      "weight_decay": 2.3233503515390116e-06,
+      "hidden_dim": 64,
+      "num_layers": 2,
+      "dropout": 0.19351332282682332,
+      "kernel_size": 5,
+      "optimizer": "adamw",
+      "scheduler": "none"
+    },
+    "mcc": 0.09400076246153315,
+    "metrics": {
+      "mcc": 0.0413896702557481,
+      "mcc_std": 0.023304553396305966,
+      "accuracy": 0.6823683910014845,
+      "accuracy_std": 0.27541855081129724,
+      "balanced_accuracy": 0.5794130098283948,
+      "balanced_accuracy_std": 0.051800439959000744,
+      "precision": 0.017971182435687096,
+      "precision_std": 0.0045230569933079265,
+      "recall": 0.4765319200159858,
+      "recall_std": 0.27238067166241003,
+      "f1": 0.03421651240768516,
+      "f1_std": 0.008989607794793077,
+      "specificity": 0.6822940996408039,
+      "specificity_std": 0.28084162712232474,
+      "cohen_kappa": 0.015330843276096759,
+      "cohen_kappa_std": 0.010093771861389694,
+      "auc_roc": 0.5956992078729196,
+      "auc_roc_std": 0.07282666453026518,
+      "auc_pr": 0.013010907078506032,
+      "auc_pr_std": 0.00417117282715985
+    }
+  }
+}
