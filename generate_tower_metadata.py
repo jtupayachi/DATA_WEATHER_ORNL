@@ -6,11 +6,19 @@ Automatically generates comprehensive TOWER_COORDINATES and REGION_INFO
 dictionaries from basic tower name and coordinate inputs.
 
 This script:
-1. Takes basic tower names and lat/lon coordinates
-2. Fetches real elevation data from Open-Elevation API
-3. Calculates terrain characteristics (slope, aspect, etc.)
-4. Classifies terrain type based on elevation relative to neighbors
-5. Generates Python code ready to copy into other scripts
+1. Takes tower names, UTM coordinates (Easting, Northing), elevation MSL, and tower height
+2. Converts UTM coordinates to lat/lon (WGS84)
+3. Fetches real terrain elevation data from Open-Elevation API (optional)
+4. Calculates terrain characteristics (slope, aspect, etc.)
+5. Classifies terrain type based on elevation relative to neighbors
+6. Generates Python code ready to copy into other scripts
+
+Input Format (INPUT_TOWER_COORDINATES):
+    List of dicts with:
+    - name: Tower ID (e.g., 'TOWA')
+    - coordinates: [Easting, Northing] in UTM Zone 16N (meters)
+    - elevation_msl_m: Ground elevation in meters above mean sea level
+    - height_m: Tower height in meters
 
 Usage:
     python generate_tower_metadata.py
@@ -18,6 +26,7 @@ Usage:
 Output:
     - Prints generated Python code to console
     - Saves to tower_metadata_generated.py
+    - Saves JSON version to tower_metadata_generated.json
 
 Author: Auto-generated
 Date: December 2024
@@ -35,36 +44,212 @@ except ImportError:
     HAS_REQUESTS = False
     print("Warning: 'requests' not installed. Install with: pip install requests")
 
+try:
+    from pyproj import Transformer
+    HAS_PYPROJ = True
+except ImportError:
+    HAS_PYPROJ = False
+    print("Warning: 'pyproj' not installed. Install with: pip install pyproj")
+
+# =============================================================================
+# UTM TO LAT/LON CONVERSION
+# =============================================================================
+
+def utm_to_latlon(easting, northing, zone=16, northern=True):
+    """
+    Convert UTM coordinates to latitude/longitude (WGS84).
+    
+    Parameters:
+        easting: UTM Easting in meters
+        northing: UTM Northing in meters
+        zone: UTM zone number (default 16 for Oak Ridge, TN)
+        northern: True for Northern hemisphere
+    
+    Returns:
+        (latitude, longitude) in decimal degrees
+    """
+    if HAS_PYPROJ:
+        # Use pyproj for accurate conversion
+        transformer = Transformer.from_crs(
+            f"EPSG:326{zone:02d}" if northern else f"EPSG:327{zone:02d}",
+            "EPSG:4326",
+            always_xy=True
+        )
+        lon, lat = transformer.transform(easting, northing)
+        return lat, lon
+    else:
+        # Fallback: approximate conversion (less accurate)
+        # This uses simplified formulas for UTM Zone 16N
+        print("  Warning: Using approximate UTM conversion (install pyproj for accuracy)")
+        
+        # WGS84 parameters
+        a = 6378137.0  # Semi-major axis
+        f = 1 / 298.257223563  # Flattening
+        k0 = 0.9996  # Scale factor
+        e = np.sqrt(2 * f - f ** 2)  # Eccentricity
+        
+        # Central meridian for zone 16
+        lon0 = (zone - 1) * 6 - 180 + 3
+        
+        # Remove false easting
+        x = easting - 500000
+        y = northing if northern else northing - 10000000
+        
+        # Approximate conversion
+        M = y / k0
+        mu = M / (a * (1 - e**2/4 - 3*e**4/64 - 5*e**6/256))
+        
+        e1 = (1 - np.sqrt(1 - e**2)) / (1 + np.sqrt(1 - e**2))
+        
+        phi1 = mu + (3*e1/2 - 27*e1**3/32) * np.sin(2*mu)
+        phi1 += (21*e1**2/16 - 55*e1**4/32) * np.sin(4*mu)
+        phi1 += (151*e1**3/96) * np.sin(6*mu)
+        
+        N1 = a / np.sqrt(1 - e**2 * np.sin(phi1)**2)
+        T1 = np.tan(phi1)**2
+        C1 = (e**2 / (1 - e**2)) * np.cos(phi1)**2
+        R1 = a * (1 - e**2) / (1 - e**2 * np.sin(phi1)**2)**1.5
+        D = x / (N1 * k0)
+        
+        lat = phi1 - (N1 * np.tan(phi1) / R1) * (
+            D**2/2 - (5 + 3*T1 + 10*C1 - 4*C1**2 - 9*(e**2/(1-e**2))) * D**4/24
+            + (61 + 90*T1 + 298*C1 + 45*T1**2 - 252*(e**2/(1-e**2)) - 3*C1**2) * D**6/720
+        )
+        
+        lon = lon0 + np.degrees(
+            (D - (1 + 2*T1 + C1) * D**3/6
+             + (5 - 2*C1 + 28*T1 - 3*C1**2 + 8*(e**2/(1-e**2)) + 24*T1**2) * D**5/120)
+            / np.cos(phi1)
+        )
+        
+        lat = np.degrees(lat)
+        
+        return lat, lon
+
+
+def preprocess_input_coordinates(input_list, utm_zone=16):
+    """
+    Convert new input format (list of dicts with UTM) to internal dict format.
+    
+    Parameters:
+        input_list: List of dicts with 'name', 'coordinates' [E, N], 
+                   'elevation_msl_m', 'height_m'
+        utm_zone: UTM zone number
+    
+    Returns:
+        dict: {tower_id: {lat, lon, elevation_msl_m, height_m}}
+    """
+    result = {}
+    
+    print(f"\nConverting UTM coordinates (Zone {utm_zone}N) to lat/lon...")
+    
+    for tower in input_list:
+        name = tower['name']
+        easting, northing = tower['coordinates']
+        elevation_msl = tower.get('elevation_msl_m', 0)
+        height = tower.get('height_m', 0)
+        
+        lat, lon = utm_to_latlon(easting, northing, zone=utm_zone)
+        
+        result[name] = {
+            'lat': round(lat, 6),
+            'lon': round(lon, 6),
+            'elevation_msl_m': elevation_msl,
+            'height_m': height
+        }
+        
+        print(f"  {name}: UTM({easting}, {northing}) -> ({lat:.6f}, {lon:.6f})")
+    
+    return result
+
+
 # =============================================================================
 # INPUT DATA - Modify these values as needed
 # =============================================================================
 
-# Basic tower coordinates (name: {lat, lon})
-INPUT_TOWER_COORDINATES = {
-    'TOWA': {'lat': 35.9312, 'lon': -84.3108},
-    'TOWB': {'lat': 35.9285, 'lon': -84.3045},
-    'TOWD': {'lat': 35.9350, 'lon': -84.3200},
-    'TOWF': {'lat': 35.9220, 'lon': -84.3150},
-    'TOWS': {'lat': 35.9380, 'lon': -84.2980},
-    'TOWY': {'lat': 35.9255, 'lon': -84.3250},
-}
+# Tower coordinates in UTM Zone 16N (Easting, Northing)
+
+# ORNL Tower A      743160, 3978436   263 m MSL.     33 m ht
+# ORNL Tower B      743406, 3979843.      256.3  MSL.     33 m ht
+# ORNL Tower D.           741372, 3978941   261.0 MSL.    60 m ht
+# ORNL Tower F.        743230, 3982081    354.0 MSL.     10 m ht
+# Y-12 Tower S           747590, 3985260.   352.0 MSL.     25 m ht
+# Y-12 Tower W (West)  745813, 3985234    326.0 MSL,     60 m ht
+# Y-12 Tower Y (PSS)     747594, 3986050.     289.7 MSL,     33 m ht
+
+
+INPUT_TOWER_COORDINATES=[
+  {
+    "name": "TOWA",
+    "coordinates": [743160, 3978436],
+    "elevation_msl_m": 263,
+    "height_m": 33
+  },
+  {
+    "name": "TOWB",
+    "coordinates": [743406, 3979843],
+    "elevation_msl_m": 256.3,
+    "height_m": 33
+  },
+  {
+    "name": "TOWD",
+    "coordinates": [741372, 3978941],
+    "elevation_msl_m": 261.0,
+    "height_m": 60
+  },
+  {
+    "name": "TOWF",
+    "coordinates": [743230, 3982081],
+    "elevation_msl_m": 354.0,
+    "height_m": 10
+  },
+  {
+    "name": "TOWS",
+    "coordinates": [747590, 3985260],
+    "elevation_msl_m": 352.0,
+    "height_m": 25
+  },
+  {
+    "name": "TOWW",
+    "coordinates": [745813, 3985234],
+    "elevation_msl_m": 326.0,
+    "height_m": 60
+  },
+  {
+    "name": "TOWY",
+    "coordinates": [747594, 3986050],
+    "elevation_msl_m": 289.7,
+    "height_m": 33
+  }
+]
+
+
+
+
+
+
+# }
 
 # Basic region info
 INPUT_REGION_INFO = {
-    'name': 'Oak Ridge National Laboratory (ORNL)',
+    'name': 'Oak Ridge Reservation',
     'state': 'Tennessee, USA',
-    'center_lat': 35.931,
-    'center_lon': -84.310,
+    'center_lat': 35.928252,
+    'center_lon': -84.317857,
+
+    
+
 }
 
 # Tower name mappings (customize as needed)
 TOWER_NAMES = {
-    'TOWA': 'Tower A - Main Campus',
-    'TOWB': 'Tower B - East Ridge',
-    'TOWD': 'Tower D - West Valley',
-    'TOWF': 'Tower F - South Field',
-    'TOWS': 'Tower S - North Summit',
-    'TOWY': 'Tower Y - Southwest',
+    'TOWA': 'ORNL Tower A',
+    'TOWB': 'ORNL Tower B',
+    'TOWD': 'ORNL Tower D',
+    'TOWF': 'ORNL Tower F',
+    'TOWS': 'Y-12 Tower S',
+    'TOWW': 'Y-12 Tower W (West)',
+    'TOWY': 'Y-12 Tower Y (PSS)',
 }
 
 # Color palette for towers
@@ -74,6 +259,7 @@ TOWER_COLORS = {
     'TOWD': '#4daf4a',  # Green
     'TOWF': '#984ea3',  # Purple
     'TOWS': '#ff7f00',  # Orange
+    'TOWW': "#fb00ff",  # Pink
     'TOWY': '#a65628',  # Brown
 }
 
@@ -494,10 +680,16 @@ def generate_tower_metadata(input_coords, input_region, tower_names=None, tower_
         # Get tower color
         color = tower_colors.get(tid, '#888888')
         
+        # Get elevation MSL and tower height from input
+        elevation_msl = input_coords[tid].get('elevation_msl_m', elev)
+        tower_height = input_coords[tid].get('height_m', 0)
+        
         tower_metadata[tid] = {
             'lat': lat,
             'lon': lon,
-            'elevation_m': int(elev),
+            'elevation_m': int(elev),              # Terrain elevation from API
+            'elevation_msl_m': elevation_msl,      # Official ground elevation MSL
+            'height_m': tower_height,              # Tower instrument height
             'name': name,
             'terrain_type': terrain_type,
             'slope_deg': slope,
@@ -509,7 +701,7 @@ def generate_tower_metadata(input_coords, input_region, tower_names=None, tower_
             'color': color,
         }
         
-        print(f"  {tid}: {terrain_type}, {elev}m, slope={slope}°, canopy={canopy_cover}%")
+        print(f"  {tid}: {terrain_type}, {elevation_msl}m MSL, tower height={tower_height}m, slope={slope}°")
     
     # =========================================================================
     # Step 4: Generate region info
