@@ -1,0 +1,439 @@
+================================================================================
+       FEATURE IMPORTANCE STATISTICAL REPORT
+================================================================================
+Generated: 2025-12-08 17:54:30
+Towers analyzed: TOWA, TOWB, TOWD, TOWF, TOWS, TOWY
+Events analyzed: E3_LowTemp_lt0, E4_HighWind_Peak_gt25, E5_LowWind_lt2
+Total feature records: 360
+
+================================================================================
+GEOGRAPHIC CONTEXT
+================================================================================
+
+Study Region: Oak Ridge National Laboratory (ORNL)
+Location: Tennessee, USA
+Center Coordinates: 35.9310N, 84.3100W
+Terrain: Ridge and Valley Province, Appalachian Region
+Climate: Humid subtropical (Köppen: Cfa)
+
+Tower Locations:
+--------------------------------------------------------------------------------
+Tower    Name                           Latitude     Longitude    Elevation   
+--------------------------------------------------------------------------------
+TOWA     Tower A - Main Campus          35.9312      -84.3108     280       m
+TOWB     Tower B - East Ridge           35.9285      -84.3045     295       m
+TOWD     Tower D - West Valley          35.9350      -84.3200     310       m
+TOWF     Tower F - South Field          35.9220      -84.3150     265       m
+TOWS     Tower S - North Summit         35.9380      -84.2980     340       m
+TOWY     Tower Y - Southwest            35.9255      -84.3250     275       m
+
+Spatial Extent: ~1.78 km (N-S) x ~2.43 km (E-W)
+Elevation Range: 265m - 340m (75m difference)
+
+================================================================================
+SECTION 1: GLOBAL TOP FEATURES (Averaged Across All Towers & Events)
+================================================================================
+
+Top 20 Most Important Features (by mean importance %):
+--------------------------------------------------------------------------------
+Rank  Feature                                  Mean%      Std%       Min%       Max%      
+--------------------------------------------------------------------------------
+1     TempC_025m                                 62.645       nan    62.645    62.645
+2     TempC_030m                                 48.645    23.234    32.216    65.074
+3     TempC_002m                                 43.359       nan    43.359    43.359
+4     TempC_015m                                 27.635    20.135    15.193    57.508
+5     TempC_010m                                 26.645       nan    26.645    26.645
+6     TempC_025m_lag1                            23.100       nan    23.100    23.100
+7     TempC_033m                                 16.268       nan    16.268    16.268
+8     TempC_010m_lag1                            10.417       nan    10.417    10.417
+9     SigPhi_030m_lag24                           9.698       nan     9.698     9.698
+10    TempC_060m                                  8.594       nan     8.594     8.594
+11    SolarRadWm2_010m_roll4_std                  8.230       nan     8.230     8.230
+12    TempC_010m_roll12_std                       8.015       nan     8.015     8.015
+13    TempC_060m_lag8                             7.974       nan     7.974     7.974
+14    Sigma_010m_roll4_mean                       7.810       nan     7.810     7.810
+15    SolarRadWm2_002m_lag24                      7.430     7.108     1.032    15.082
+16    TempC_015m_lag1                             7.171       nan     7.171     7.171
+17    SigPhi_010m_roll24_std                      7.123       nan     7.123     7.123
+18    TempC_035m                                  7.003       nan     7.003     7.003
+19    AbsHum_010m_lag4                            6.807       nan     6.807     6.807
+20    WSpdMph_010m_roll24_mean                    6.355       nan     6.355     6.355
+
+
+================================================================================
+SECTION 2: TOP FEATURES PER EVENT (Target Variable)
+================================================================================
+
+>> EVENT: E3 LowTemp <0
+------------------------------------------------------------
+Rank  Feature                                       Mean%        Std%        
+------------------------------------------------------------
+1     TempC_025m                                        62.645         N/A
+2     TempC_030m                                        48.645      23.234
+3     TempC_002m                                        43.359         N/A
+4     TempC_015m                                        27.635      20.135
+5     TempC_010m                                        26.645         N/A
+6     TempC_025m_lag1                                   23.100         N/A
+7     TempC_033m                                        16.268         N/A
+8     TempC_010m_lag1                                   10.417         N/A
+9     TempC_060m                                         8.594         N/A
+10    TempC_060m_lag8                                    7.974         N/A
+
+>> EVENT: E4 HighWind Peak >25
+------------------------------------------------------------
+Rank  Feature                                       Mean%        Std%        
+------------------------------------------------------------
+1     TempC_010m_lag24                                   9.693         N/A
+2     SolarRadWm2_002m_lag24                             6.176         N/A
+3     RelHum_010m_roll4_std                              5.152         N/A
+4     BarPresMb_015m_lag96                               4.489       3.379
+5     WDir_030m                                          4.243         N/A
+6     TempC_025m_lag16                                   4.160         N/A
+7     BarPresMb_010m_lag24                               3.668         N/A
+8     SigPhi_010m_roll12_std                             3.663         N/A
+9     BarPresMb_015m_lag48                               3.439         N/A
+10    TempC_025m_lag48                                   3.400         N/A
+
+>> EVENT: E5 LowWind <2
+------------------------------------------------------------
+Rank  Feature                                       Mean%        Std%        
+------------------------------------------------------------
+1     SolarRadWm2_002m_lag24                            15.082         N/A
+2     SolarRadWm2_015m_lag24                            10.312         N/A
+3     SigPhi_030m_lag24                                  9.698         N/A
+4     SigPhi_025m_lag24                                  8.338         N/A
+5     SolarRadWm2_010m_roll4_std                         8.230         N/A
+6     TempC_010m_roll12_std                              8.015         N/A
+7     Sigma_010m_roll4_mean                              7.810         N/A
+8     SigPhi_010m_roll24_std                             7.123         N/A
+9     AbsHum_010m_lag4                                   6.807         N/A
+10    WSpdMph_010m_roll24_mean                           6.355         N/A
+
+
+================================================================================
+SECTION 3: TOP FEATURES PER TOWER
+================================================================================
+
+>> TOWER: TOWA
+------------------------------------------------------------
+Rank  Feature                                       Mean%        Std%        
+------------------------------------------------------------
+1     TempC_030m                                        65.074         N/A
+2     TempC_015m                                        21.842         N/A
+3     SigPhi_030m_lag24                                  9.698         N/A
+4     WSpdMph_015m_roll96_std                            4.184         N/A
+5     SigPhi_015m_lag24                                  3.360         N/A
+6     TempC_030m_lag8                                    3.185         N/A
+7     TempC_030m_lag1                                    3.130         N/A
+8     RelHum_015m_lag4                                   2.112         N/A
+9     BarPresMb_015m_lag96                               2.100         N/A
+10    TempC_015m_lag24                                   2.038         N/A
+
+>> TOWER: TOWB
+------------------------------------------------------------
+Rank  Feature                                       Mean%        Std%        
+------------------------------------------------------------
+1     TempC_030m                                        32.216         N/A
+2     TempC_015m                                        15.996         N/A
+3     BarPresMb_015m_lag96                               4.612       3.205
+4     WDir_030m                                          4.243         N/A
+5     RelHum_015m_lag48                                  3.512       0.755
+6     RelHum_015m_lag8                                   3.500       1.875
+7     BarPresMb_015m_lag4                                3.178         N/A
+8     TempC_030m_lag48                                   3.165       1.401
+9     RelHum_015m_roll24_mean                            2.996         N/A
+10    BarPresMb_015m_lag8                                2.962         N/A
+
+>> TOWER: TOWD
+------------------------------------------------------------
+Rank  Feature                                       Mean%        Std%        
+------------------------------------------------------------
+1     TempC_002m                                        43.359         N/A
+2     TempC_015m                                        15.193         N/A
+3     TempC_060m                                         8.594         N/A
+4     TempC_060m_lag8                                    7.974         N/A
+5     SolarRadWm2_002m_lag24                             7.430       7.108
+6     TempC_035m                                         7.003         N/A
+7     Sigma_015m_roll12_std                              2.356         N/A
+8     PkWSpdMph_060m                                     2.309         N/A
+9     TempC_060m_lag1                                    2.213         N/A
+10    SolarRadWm2_002m_roll12_std                        1.922         N/A
+
+>> TOWER: TOWF
+------------------------------------------------------------
+Rank  Feature                                       Mean%        Std%        
+------------------------------------------------------------
+1     TempC_010m                                        26.645         N/A
+2     TempC_010m_lag1                                   10.417         N/A
+3     SolarRadWm2_010m_roll4_std                         8.230         N/A
+4     TempC_010m_roll12_std                              8.015         N/A
+5     Sigma_010m_roll4_mean                              7.810         N/A
+6     SigPhi_010m_roll24_std                             7.123         N/A
+7     AbsHum_010m_lag4                                   6.807         N/A
+8     WSpdMph_010m_roll24_mean                           6.355         N/A
+9     TempC_010m_lag24                                   5.614       5.768
+10    TempC_010m_roll12_mean                             5.519         N/A
+
+>> TOWER: TOWS
+------------------------------------------------------------
+Rank  Feature                                       Mean%        Std%        
+------------------------------------------------------------
+1     TempC_025m                                        62.645         N/A
+2     TempC_025m_lag1                                   23.100         N/A
+3     SigPhi_025m_roll24_std                             5.351         N/A
+4     SigPhi_025m_lag24                                  4.586       5.305
+5     PkWSpdMph_025m_roll4_mean                          4.526         N/A
+6     WSpdMph_025m_roll24_mean                           4.070         N/A
+7     TempC_025m_lag16                                   3.800       0.509
+8     SigPhi_025m_lag16                                  3.552       3.812
+9     VSSpdMph_025m_lag16                                3.372         N/A
+10    PkWSpdMph_025m                                     3.116       0.068
+
+>> TOWER: TOWY
+------------------------------------------------------------
+Rank  Feature                                       Mean%        Std%        
+------------------------------------------------------------
+1     TempC_015m                                        57.508         N/A
+2     TempC_033m                                        16.268         N/A
+3     TempC_015m_lag1                                    7.171         N/A
+4     SolarRadWm2_015m_lag24                             4.366       5.253
+5     VSSpdMph_015m_roll12_mean                          3.096         N/A
+6     SolarRadWm2_015m_lag4                              2.724         N/A
+7     BarPresMb_015m_roll12_std                          2.408         N/A
+8     BarPresMb_015m_roll4_std                           2.295         N/A
+9     PkWSpdMph_015m_roll24_mean                         2.272         N/A
+10    TempC_033m_lag1                                    1.894         N/A
+
+
+================================================================================
+SECTION 4: STATISTICAL SIGNIFICANCE TESTS
+================================================================================
+
+4.1 Kruskal-Wallis Test: Feature Importance Differences Across Towers
+    (Tests if importance distributions differ significantly between towers)
+--------------------------------------------------------------------------------
+
+  Event: E3 LowTemp <0
+    H-statistic: 26.2090
+    p-value: 0.000081 ***
+    Interpretation: Significant difference between towers
+
+  Event: E4 HighWind Peak >25
+    H-statistic: 38.2389
+    p-value: 0.000000 ***
+    Interpretation: Significant difference between towers
+
+  Event: E5 LowWind <2
+    H-statistic: 55.3821
+    p-value: 0.000000 ***
+    Interpretation: Significant difference between towers
+
+
+4.2 Kruskal-Wallis Test: Feature Importance Differences Across Events
+    (Tests if importance distributions differ significantly between events)
+--------------------------------------------------------------------------------
+
+  Tower: TOWA
+    H-statistic: 14.8928
+    p-value: 0.000584 ***
+    Interpretation: Significant difference between events
+
+  Tower: TOWB
+    H-statistic: 13.7826
+    p-value: 0.001017 **
+    Interpretation: Significant difference between events
+
+  Tower: TOWD
+    H-statistic: 7.4334
+    p-value: 0.024314 *
+    Interpretation: Significant difference between events
+
+  Tower: TOWF
+    H-statistic: 9.4282
+    p-value: 0.008968 **
+    Interpretation: Significant difference between events
+
+  Tower: TOWS
+    H-statistic: 20.5636
+    p-value: 0.000034 ***
+    Interpretation: Significant difference between events
+
+  Tower: TOWY
+    H-statistic: 12.8600
+    p-value: 0.001612 **
+    Interpretation: Significant difference between events
+
+
+================================================================================
+SECTION 5: PAIRWISE TOWER COMPARISONS (Mann-Whitney U Test)
+================================================================================
+
+Comparing feature importance distributions between tower pairs:
+(Bonferroni-corrected significance level for multiple comparisons)
+Corrected alpha: 0.003333 (original: 0.05, n_comparisons: 15)
+--------------------------------------------------------------------------------
+
+  Event: E3 LowTemp <0
+    TOWA vs TOWB: U=77.0, p=0.000921 ***
+    TOWA vs TOWD: U=138.0, p=0.096196 ns
+    TOWA vs TOWF: U=70.0, p=0.000460 ***
+    TOWA vs TOWS: U=196.0, p=0.924573 ns
+    TOWA vs TOWY: U=147.0, p=0.155570 ns
+    TOWB vs TOWD: U=262.0, p=0.096196 ns
+    TOWB vs TOWF: U=100.0, p=0.007113 **
+    TOWB vs TOWS: U=274.0, p=0.046792 ns
+    TOWB vs TOWY: U=303.0, p=0.005560 **
+    TOWD vs TOWF: U=114.0, p=0.020735 ns
+    TOWD vs TOWS: U=245.0, p=0.228694 ns
+    TOWD vs TOWY: U=207.0, p=0.860431 ns
+    TOWF vs TOWS: U=323.0, p=0.000921 ***
+    TOWF vs TOWY: U=334.0, p=0.000305 ***
+    TOWS vs TOWY: U=170.0, p=0.424883 ns
+
+  Event: E4 HighWind Peak >25
+    TOWA vs TOWB: U=56.0, p=0.000104 ***
+    TOWA vs TOWD: U=296.0, p=0.009786 **
+    TOWA vs TOWF: U=118.0, p=0.027483 ns
+    TOWA vs TOWS: U=151.0, p=0.189544 ns
+    TOWA vs TOWY: U=247.0, p=0.208454 ns
+    TOWB vs TOWD: U=354.0, p=0.000033 ***
+    TOWB vs TOWF: U=277.0, p=0.038515 ns
+    TOWB vs TOWS: U=308.0, p=0.003639 **
+    TOWB vs TOWY: U=350.0, p=0.000053 ***
+    TOWD vs TOWF: U=70.0, p=0.000460 ***
+    TOWD vs TOWS: U=87.0, p=0.002341 **
+    TOWD vs TOWY: U=153.0, p=0.208454 ns
+    TOWF vs TOWS: U=251.0, p=0.171930 ns
+    TOWF vs TOWY: U=311.0, p=0.002799 **
+    TOWS vs TOWY: U=285.0, p=0.022270 ns
+
+  Event: E5 LowWind <2
+    TOWA vs TOWB: U=180.0, p=0.597863 ns
+    TOWA vs TOWD: U=347.0, p=0.000074 ***
+    TOWA vs TOWF: U=64.0, p=0.000247 ***
+    TOWA vs TOWS: U=91.0, p=0.003336 **
+    TOWA vs TOWY: U=280.0, p=0.031517 ns
+    TOWB vs TOWD: U=354.0, p=0.000033 ***
+    TOWB vs TOWF: U=72.0, p=0.000563 ***
+    TOWB vs TOWS: U=93.0, p=0.003966 **
+    TOWB vs TOWY: U=304.0, p=0.005115 **
+    TOWD vs TOWF: U=26.0, p=0.000003 ***
+    TOWD vs TOWS: U=32.0, p=0.000006 ***
+    TOWD vs TOWY: U=121.0, p=0.033718 ns
+    TOWF vs TOWS: U=249.0, p=0.189544 ns
+    TOWF vs TOWY: U=361.0, p=0.000014 ***
+    TOWS vs TOWY: U=343.0, p=0.000116 ***
+
+
+================================================================================
+SECTION 6: FEATURE CONSISTENCY ANALYSIS
+================================================================================
+
+Features that appear in Top 10 across multiple tower-event combinations:
+--------------------------------------------------------------------------------
+
+Feature                                            Count      %          Consistency    
+--------------------------------------------------------------------------------
+TempC_015m                                         4            22.2%    Low            
+RelHum_015m_lag24                                  4            22.2%    Low            
+RelHum_015m_lag48                                  4            22.2%    Low            
+RelHum_015m_lag16                                  3            16.7%    Low            
+BarPresMb_015m_lag96                               3            16.7%    Low            
+RelHum_015m_lag8                                   3            16.7%    Low            
+SolarRadWm2_002m_lag24                             3            16.7%    Low            
+SolarRadWm2_015m_lag24                             3            16.7%    Low            
+TempC_030m                                         2            11.1%    Low            
+AbsHum_015m_lag96                                  2            11.1%    Low            
+TempC_030m_lag96                                   2            11.1%    Low            
+TempC_015m_lag96                                   2            11.1%    Low            
+TempC_015m_lag24                                   2            11.1%    Low            
+TempC_030m_lag48                                   2            11.1%    Low            
+VSSpdMph_015m_roll12_mean                          2            11.1%    Low            
+BarPresMb_015m_lag48                               2            11.1%    Low            
+RelHum_002m_lag24                                  2            11.1%    Low            
+SolarRadWm2_002m_lag16                             2            11.1%    Low            
+BarPresMb_015m                                     2            11.1%    Low            
+BarPresMb_010m_lag24                               2            11.1%    Low            
+
+
+================================================================================
+SECTION 7: VARIABLE CATEGORY IMPORTANCE SUMMARY
+================================================================================
+
+Category                  Total%       Mean%        Std%         Count     
+--------------------------------------------------------------------------------
+TempC                         557.59       6.265      12.679        89
+SolarRadWm2                    84.38       2.722       3.206        31
+BarPresMb                      82.31       2.225       1.513        37
+SigPhi                         75.90       2.108       2.365        36
+RelHum                         68.46       1.902       1.351        36
+PkWSpdMph                      54.97       1.832       0.936        30
+WSpdMph                        43.06       1.957       1.716        22
+WDir                           38.94       1.391       0.935        28
+Sigma                          33.30       2.562       1.895        13
+VSSpdMph                       28.63       1.431       0.855        20
+AbsHum                         22.90       1.272       1.543        18
+
+
+================================================================================
+SECTION 8: SPATIAL ANALYSIS OF FEATURE IMPORTANCE
+================================================================================
+
+Feature importance vs. geographic position (elevation, lat, lon):
+--------------------------------------------------------------------------------
+
+Rank   Tower    Top5 Imp%    Elevation    Lat        Lon       
+----------------------------------------------------------------------
+1      TOWA         101.79         280m   35.9312  -84.3108
+2      TOWS         101.64         340m   35.9380  -84.2980
+3      TOWY          89.91         275m   35.9255  -84.3250
+4      TOWD          82.17         310m   35.9350  -84.3200
+5      TOWB          66.40         295m   35.9285  -84.3045
+6      TOWF          60.14         265m   35.9220  -84.3150
+
+Spearman correlation (Elevation vs Top5 Importance): r=0.371, p=0.4685
+  >> No significant correlation between elevation and feature importance
+
+
+
+================================================================================
+SECTION 9: KEY FINDINGS & HIGHLIGHTS
+================================================================================
+
+1. MOST IMPORTANT FEATURE OVERALL:
+   - TempC_025m
+   - Mean importance: 62.645%
+   - Range: 62.645% - 62.645%
+
+2. MOST CONSISTENT FEATURE (appears in Top 10 most often):
+   - TempC_015m
+   - Appears in Top 10 for 4/18 tower-event combinations (22.2%)
+
+3. MOST IMPORTANT VARIABLE CATEGORY:
+   - TempC
+   - Total importance: 557.59%
+
+4. EVENT-SPECIFIC TOP FEATURES:
+   - E3 LowTemp <0: TempC_025m (62.65%)
+   - E4 HighWind Peak >25: TempC_010m_lag24 (9.69%)
+   - E5 LowWind <2: SolarRadWm2_002m_lag24 (15.08%)
+
+5. TOWER WITH HIGHEST FEATURE CONCENTRATION:
+   - TOWS (Top 5 features account for 105.68% of importance)
+
+6. GEOGRAPHIC HIGHLIGHTS:
+   - Highest elevation tower: TOWS (340m)
+   - Lowest elevation tower: TOWF (265m)
+   - Northernmost tower: TOWS (35.9380N)
+   - Southernmost tower: TOWF (35.9220N)
+
+
+================================================================================
+STATISTICAL SIGNIFICANCE LEGEND:
+  *** p < 0.001 (highly significant)
+  **  p < 0.01  (very significant)
+  *   p < 0.05  (significant)
+  ns  p >= 0.05 (not significant)
+================================================================================
+END OF REPORT
+================================================================================

@@ -2,6 +2,7 @@
 """
 Hyperparameter Optimization for CNN/TCN Models using Optuna (Bayesian Optimization)
 Optimizes for MCC (Matthews Correlation Coefficient)
+With Mixed Precision Training and Parallel Execution
 """
 
 import pandas as pd
@@ -10,6 +11,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
+from torch.cuda.amp import autocast, GradScaler  # Mixed precision
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import (confusion_matrix, precision_recall_curve, f1_score, 
                              precision_score, recall_score, accuracy_score, 
@@ -26,8 +28,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 import argparse
+import multiprocessing as mp
+import fcntl
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+import multiprocessing as mp
+import threading
 
 warnings.filterwarnings('ignore')
+optuna.logging.set_verbosity(optuna.logging.WARNING)  # Reduce optuna verbosity for parallel
 
 # ==================== GPU SETUP ====================
 def setup_gpu(gpu_id: int = 0):
@@ -99,7 +108,7 @@ class TemporalBlock(nn.Module):
 
 
 class TCNModel(nn.Module):
-    """Temporal Convolutional Network - Pure PyTorch Implementation"""
+    """Temporal Convolutional Network (no sigmoid - use with BCEWithLogitsLoss)"""
     def __init__(self, input_dim: int, hidden_dim: int = 128,
                  num_layers: int = 4, dropout: float = 0.3,
                  kernel_size: int = 3):
@@ -127,8 +136,8 @@ class TCNModel(nn.Module):
             nn.Linear(64, 32),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(32, 1),
-            nn.Sigmoid()
+            nn.Linear(32, 1)
+            # No Sigmoid - using BCEWithLogitsLoss for mixed precision stability
         )
         
     def forward(self, x):
@@ -140,7 +149,7 @@ class TCNModel(nn.Module):
 
 
 class CNNModel(nn.Module):
-    """1D Convolutional Neural Network for time series classification"""
+    """1D Convolutional Neural Network (no sigmoid - use with BCEWithLogitsLoss)"""
     def __init__(self, input_dim: int, hidden_dim: int = 128,
                  num_layers: int = 3, dropout: float = 0.3,
                  kernel_size: int = 3):
@@ -173,8 +182,8 @@ class CNNModel(nn.Module):
             nn.Linear(64, 32),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(32, 1),
-            nn.Sigmoid()
+            nn.Linear(32, 1)
+            # No Sigmoid - using BCEWithLogitsLoss for mixed precision stability
         )
         
     def forward(self, x):
@@ -187,23 +196,23 @@ class CNNModel(nn.Module):
 
 # ==================== HYPERPARAMETER SEARCH SPACE ====================
 SEARCH_SPACE = {
-    # Sequence and batch parameters
-    'sequence_length': [24, 48, 96],  # 6h, 12h, 24h of history
-    'batch_size': [16, 32, 64],
+    # Sequence and batch parameters - larger batch = faster training
+    'sequence_length': [24, 48],  # Reduced: skip 96 (too slow)
+    'batch_size': [32, 64, 128],  # Larger batches for GPU efficiency
     
     # Learning parameters
     'learning_rate': (1e-4, 1e-2),  # log-uniform
     'weight_decay': (1e-6, 1e-3),   # log-uniform
     
-    # Model architecture
-    'hidden_dim': [64, 128, 256],
-    'num_layers': [2, 3, 4, 5],
-    'dropout': (0.1, 0.5),
-    'kernel_size': [3, 5, 7],
+    # Model architecture - reduced options
+    'hidden_dim': [64, 128],      # Skip 256 (slower)
+    'num_layers': [2, 3, 4],      # Skip 5 (diminishing returns)
+    'dropout': (0.1, 0.4),
+    'kernel_size': [3, 5],        # Skip 7 (marginal benefit)
     
-    # Training parameters
-    'optimizer': ['adam', 'adamw'],
-    'scheduler': ['plateau', 'cosine', 'none'],
+    # Training parameters - reduced options  
+    'optimizer': ['adamw'],       # AdamW generally better
+    'scheduler': ['cosine', 'none'],  # Skip plateau (slower)
 }
 
 # ==================== FORECAST HORIZONS ====================
@@ -246,7 +255,7 @@ def train_and_evaluate(X_train: np.ndarray, y_train: np.ndarray,
                        model_type: str, params: dict, device: str,
                        num_epochs: int = 100, early_stopping_patience: int = 15,
                        trial: optuna.Trial = None) -> Tuple[float, dict]:
-    """Train model and return MCC score"""
+    """Train model and return MCC score with mixed precision training"""
     
     # Create datasets
     train_dataset = TimeSeriesDataset(X_train, y_train, params['sequence_length'])
@@ -255,15 +264,22 @@ def train_and_evaluate(X_train: np.ndarray, y_train: np.ndarray,
     if len(train_dataset) < params['batch_size'] or len(val_dataset) < params['batch_size']:
         return -1.0, {}
     
-    train_loader = DataLoader(train_dataset, batch_size=params['batch_size'], shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=params['batch_size'], shuffle=False)
+    # Note: shuffle=False to preserve temporal order in time-series data
+    train_loader = DataLoader(train_dataset, batch_size=params['batch_size'], shuffle=False,
+                              num_workers=4, pin_memory=True, persistent_workers=True)
+    val_loader = DataLoader(val_dataset, batch_size=params['batch_size'], shuffle=False,
+                            num_workers=4, pin_memory=True, persistent_workers=True)
     
     # Create model
     input_dim = X_train.shape[1]
     model = create_model(model_type, input_dim, params, device)
     
-    # Loss function
-    criterion = nn.BCELoss(reduction='none')
+    # Loss function - use BCEWithLogitsLoss for mixed precision stability
+    criterion = nn.BCEWithLogitsLoss(reduction='none')
+    
+    # Mixed precision scaler
+    scaler = GradScaler() if device == 'cuda' else None
+    use_amp = device == 'cuda'
     
     # Optimizer
     if params['optimizer'] == 'adam':
@@ -302,36 +318,45 @@ def train_and_evaluate(X_train: np.ndarray, y_train: np.ndarray,
     best_model_state = None
     
     for epoch in range(num_epochs):
-        # Training
+        # Training with mixed precision
         model.train()
         train_loss = 0.0
         train_sample_count = 0
         
         for batch_idx, (X_batch, y_batch) in enumerate(train_loader):
-            X_batch = X_batch.to(device)
-            y_batch = y_batch.to(device)
+            X_batch = X_batch.to(device, non_blocking=True)
+            y_batch = y_batch.to(device, non_blocking=True)
             
-            optimizer.zero_grad()
-            outputs = model(X_batch)
-            loss_per_sample = criterion(outputs, y_batch)
+            optimizer.zero_grad(set_to_none=True)
             
-            if class_weights is not None:
-                start_idx = batch_idx * params['batch_size']
-                end_idx = min(start_idx + len(X_batch), len(train_dataset))
-                batch_weights = class_weights[start_idx:end_idx].to(device)
-                weighted_loss = (loss_per_sample * batch_weights).mean()
+            # Mixed precision forward pass
+            with autocast(enabled=use_amp):
+                outputs = model(X_batch)
+                loss_per_sample = criterion(outputs, y_batch)
+                
+                if class_weights is not None:
+                    start_idx = batch_idx * params['batch_size']
+                    end_idx = min(start_idx + len(X_batch), len(train_dataset))
+                    batch_weights = class_weights[start_idx:end_idx].to(device, non_blocking=True)
+                    weighted_loss = (loss_per_sample * batch_weights).mean()
+                else:
+                    weighted_loss = loss_per_sample.mean()
+            
+            # Mixed precision backward pass
+            if scaler is not None:
+                scaler.scale(weighted_loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
             else:
-                weighted_loss = loss_per_sample.mean()
-            
-            weighted_loss.backward()
-            optimizer.step()
+                weighted_loss.backward()
+                optimizer.step()
             
             train_loss += weighted_loss.item() * len(X_batch)
             train_sample_count += len(X_batch)
         
         train_loss /= train_sample_count
         
-        # Validation
+        # Validation with mixed precision
         model.eval()
         val_loss = 0.0
         val_sample_count = 0
@@ -340,16 +365,18 @@ def train_and_evaluate(X_train: np.ndarray, y_train: np.ndarray,
         
         with torch.no_grad():
             for X_batch, y_batch in val_loader:
-                X_batch = X_batch.to(device)
-                y_batch = y_batch.to(device)
+                X_batch = X_batch.to(device, non_blocking=True)
+                y_batch = y_batch.to(device, non_blocking=True)
                 
-                outputs = model(X_batch)
-                loss = criterion(outputs, y_batch).mean()
+                with autocast(enabled=use_amp):
+                    outputs = model(X_batch)
+                    loss = criterion(outputs, y_batch).mean()
                 
                 val_loss += loss.item() * len(X_batch)
                 val_sample_count += len(X_batch)
                 
-                all_preds.extend(outputs.cpu().numpy())
+                # Apply sigmoid for BCEWithLogitsLoss
+                all_preds.extend(torch.sigmoid(outputs).cpu().numpy())
                 all_targets.extend(y_batch.cpu().numpy())
         
         val_loss /= val_sample_count
@@ -401,9 +428,11 @@ def train_and_evaluate(X_train: np.ndarray, y_train: np.ndarray,
     
     with torch.no_grad():
         for X_batch, y_batch in val_loader:
-            X_batch = X_batch.to(device)
-            outputs = model(X_batch)
-            all_preds.extend(outputs.cpu().numpy())
+            X_batch = X_batch.to(device, non_blocking=True)
+            with autocast(enabled=use_amp):
+                outputs = model(X_batch)
+            # Apply sigmoid for BCEWithLogitsLoss
+            all_preds.extend(torch.sigmoid(outputs).cpu().numpy())
             all_targets.extend(y_batch.cpu().numpy())
     
     all_preds = np.array(all_preds)
@@ -559,43 +588,154 @@ class OptunaObjective:
 
 
 def save_best_params_incremental(output_dir: Path, best_params_per_event: dict, tower: str, event: str):
-    """Save best parameters incrementally as they improve"""
+    """Save best parameters incrementally as they improve (thread-safe)"""
     best_params_file = output_dir / 'best_params.json'
+    lock_file = output_dir / '.best_params.lock'
     
-    # Load existing params if file exists
-    if best_params_file.exists():
-        with open(best_params_file, 'r') as f:
-            existing_params = json.load(f)
-    else:
-        existing_params = {}
-    
-    # Update with new best params
-    key = f"{tower}_{event}"
-    existing_params[key] = best_params_per_event[key]
-    
-    # Save updated params
-    with open(best_params_file, 'w') as f:
-        json.dump(existing_params, f, indent=2)
+    # Simple file-based locking for thread safety
+    with open(lock_file, 'w') as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            # Load existing params if file exists
+            if best_params_file.exists():
+                with open(best_params_file, 'r') as f:
+                    existing_params = json.load(f)
+            else:
+                existing_params = {}
+            
+            # Update with new best params
+            key = f"{tower}_{event}"
+            existing_params[key] = best_params_per_event[key]
+            
+            # Save updated params
+            with open(best_params_file, 'w') as f:
+                json.dump(existing_params, f, indent=2)
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
     
     print(f"      💾 Best params saved to {best_params_file}")
 
 
+def optimize_single_experiment(args):
+    """Run optimization for a single tower-event combination (for parallel execution)"""
+    tower_name, tower_df, event_col, model_type, device, n_splits, num_epochs, \
+        early_stopping_patience, n_trials, forecast_horizon, output_dir = args
+    
+    result = None
+    best_params_entry = None
+    
+    try:
+        # Prepare data
+        X, y = prepare_data(tower_df, event_col, forecast_horizon)
+        
+        if len(X) < 500:
+            print(f"   [{tower_name}/{event_col}] ⚠️  Not enough data ({len(X)} samples), skipping...")
+            return None, None
+        
+        event_rate = y.mean()
+        print(f"   [{tower_name}/{event_col}] Starting... Samples: {len(X)}, Event rate: {event_rate:.2%}")
+        
+        # Create study with aggressive pruning for speed
+        study_name = f"{tower_name}_{event_col}_{model_type}"
+        study = optuna.create_study(
+            study_name=study_name,
+            direction='maximize',
+            sampler=TPESampler(seed=42, n_startup_trials=3),
+            pruner=MedianPruner(n_startup_trials=2, n_warmup_steps=5, interval_steps=3)
+        )
+        
+        # Optimize - use n_jobs for parallel trials within this experiment
+        objective = OptunaObjective(
+            X, y, model_type, device, n_splits, 
+            num_epochs, early_stopping_patience
+        )
+        
+        study.optimize(objective, n_trials=n_trials, show_progress_bar=False, n_jobs=1)
+        
+        # Get best parameters
+        best_params = study.best_params
+        best_mcc = study.best_value
+        
+        print(f"   [{tower_name}/{event_col}] ✅ Best MCC: {best_mcc:.4f}")
+        
+        # Train final model with best params and get all metrics
+        tscv = TimeSeriesSplit(n_splits=n_splits)
+        final_metrics_list = []
+        
+        for fold, (train_idx, val_idx) in enumerate(tscv.split(X)):
+            X_train, X_val = X[train_idx], X[val_idx]
+            y_train, y_val = y[train_idx], y[val_idx]
+            
+            _, metrics = train_and_evaluate(
+                X_train, y_train, X_val, y_val,
+                model_type, best_params, device,
+                num_epochs, early_stopping_patience
+            )
+            final_metrics_list.append(metrics)
+            clear_gpu_memory()
+        
+        # Average metrics
+        avg_metrics = {}
+        for key in final_metrics_list[0].keys():
+            if key not in ['tp', 'tn', 'fp', 'fn', 'optimal_threshold']:
+                avg_metrics[key] = np.mean([m[key] for m in final_metrics_list])
+                avg_metrics[f'{key}_std'] = np.std([m[key] for m in final_metrics_list])
+        
+        # Store results
+        result = {
+            'tower': tower_name,
+            'event': event_col,
+            'model_type': model_type,
+            'best_mcc': best_mcc,
+            'n_samples': len(X),
+            'event_rate': event_rate,
+            **best_params,
+            **avg_metrics
+        }
+        
+        # Store best params entry
+        best_params_entry = {
+            'key': f"{tower_name}_{event_col}",
+            'data': {
+                'params': best_params,
+                'mcc': best_mcc,
+                'metrics': avg_metrics
+            }
+        }
+        
+        # Save study results
+        study_df = study.trials_dataframe()
+        study_df.to_csv(output_dir / f"trials_{study_name}.csv", index=False)
+        
+    except Exception as e:
+        print(f"   [{tower_name}/{event_col}] ❌ Error: {str(e)}")
+        return None, None
+    
+    return result, best_params_entry
+
+
 def run_optimization(filtered_dfs: Dict[str, pd.DataFrame], 
                      model_type: str = 'cnn',
-                     n_trials: int = 3,  # Reduced to 3 trials for faster execution
+                     n_trials: int = 3,
                      n_splits: int = 3,
                      num_epochs: int = 100,
                      early_stopping_patience: int = 15,
                      forecast_horizon: str = '6hours',
                      gpu_id: int = 0,
-                     output_dir: str = None):
-    """Run Bayesian hyperparameter optimization with limited trials
+                     output_dir: str = None,
+                     n_parallel: int = None):
+    """Run Bayesian hyperparameter optimization with parallel execution
     
     Args:
-        n_trials: Number of configurations to try (default: 3 for quick runs)
+        n_trials: Number of configurations to try per experiment
+        n_parallel: Number of parallel experiments (default: number of CPU cores / 4)
     """
     
     device = setup_gpu(gpu_id)
+    
+    # Determine parallelism - use threads for GPU sharing
+    if n_parallel is None:
+        n_parallel = max(1, mp.cpu_count() // 4)  # Conservative for GPU memory
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     if output_dir is None:
@@ -604,125 +744,55 @@ def run_optimization(filtered_dfs: Dict[str, pd.DataFrame],
         output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True)
     
-    all_results = []
-    best_params_per_event = {}
-    
     print("\n" + "="*80)
-    print(f"FAST HYPERPARAMETER OPTIMIZATION - {model_type.upper()}")
+    print(f"🚀 PARALLEL HYPERPARAMETER OPTIMIZATION - {model_type.upper()}")
     print("="*80)
     print(f"Optimization metric: MCC (Matthews Correlation Coefficient)")
-    print(f"Number of trials: {n_trials} (quick mode)")
+    print(f"Number of trials per experiment: {n_trials}")
+    print(f"Parallel experiments: {n_parallel}")
     print(f"CV folds: {n_splits}")
     print(f"Forecast horizon: {forecast_horizon}")
     print(f"Device: {device}")
-    print(f"Best params saved incrementally to: {output_dir / 'best_params.json'}")
+    print(f"Mixed precision: ENABLED")
+    print(f"Output: {output_dir}")
     print("="*80)
     
+    # Build list of all experiments
+    experiments = []
     for tower_name, tower_df in filtered_dfs.items():
-        print(f"\n{'='*70}")
-        print(f"🏗️  TOWER: {tower_name}")
-        print(f"{'='*70}")
-        
         for event_col in TARGET_EVENTS:
-            if event_col not in tower_df.columns:
-                print(f"   ⚠️  {event_col} not found, skipping...")
-                continue
+            if event_col in tower_df.columns:
+                experiments.append((
+                    tower_name, tower_df, event_col, model_type, device, n_splits,
+                    num_epochs, early_stopping_patience, n_trials, forecast_horizon, output_dir
+                ))
+    
+    print(f"\n📋 Total experiments to run: {len(experiments)}")
+    print(f"   Running {n_parallel} experiments in parallel...\n")
+    
+    all_results = []
+    best_params_per_event = {}
+    
+    # Run experiments in parallel using ThreadPoolExecutor (shares GPU)
+    with ThreadPoolExecutor(max_workers=n_parallel) as executor:
+        futures = {executor.submit(optimize_single_experiment, exp): exp for exp in experiments}
+        
+        for future in as_completed(futures):
+            result, best_params_entry = future.result()
             
-            print(f"\n   📍 Event: {event_col}")
-            print(f"      Optimizing {model_type.upper()}...")
-            
-            try:
-                # Prepare data
-                X, y = prepare_data(tower_df, event_col, forecast_horizon)
-                
-                if len(X) < 500:
-                    print(f"      ⚠️  Not enough data ({len(X)} samples), skipping...")
-                    continue
-                
-                event_rate = y.mean()
-                print(f"      Samples: {len(X)}, Event rate: {event_rate:.2%}")
-                
-                # Create study
-                study_name = f"{tower_name}_{event_col}_{model_type}"
-                study = optuna.create_study(
-                    study_name=study_name,
-                    direction='maximize',
-                    sampler=TPESampler(seed=42),
-                    pruner=MedianPruner(n_startup_trials=5, n_warmup_steps=10)
-                )
-                
-                # Optimize
-                objective = OptunaObjective(
-                    X, y, model_type, device, n_splits, 
-                    num_epochs, early_stopping_patience
-                )
-                
-                study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
-                
-                # Get best parameters
-                best_params = study.best_params
-                best_mcc = study.best_value
-                
-                print(f"      ✅ Best MCC: {best_mcc:.4f}")
-                print(f"      Best params: {best_params}")
-                
-                # Train final model with best params and get all metrics
-                tscv = TimeSeriesSplit(n_splits=n_splits)
-                final_metrics_list = []
-                
-                for fold, (train_idx, val_idx) in enumerate(tscv.split(X)):
-                    X_train, X_val = X[train_idx], X[val_idx]
-                    y_train, y_val = y[train_idx], y[val_idx]
-                    
-                    _, metrics = train_and_evaluate(
-                        X_train, y_train, X_val, y_val,
-                        model_type, best_params, device,
-                        num_epochs, early_stopping_patience
-                    )
-                    final_metrics_list.append(metrics)
-                    clear_gpu_memory()
-                
-                # Average metrics
-                avg_metrics = {}
-                for key in final_metrics_list[0].keys():
-                    if key not in ['tp', 'tn', 'fp', 'fn', 'optimal_threshold']:
-                        avg_metrics[key] = np.mean([m[key] for m in final_metrics_list])
-                        avg_metrics[f'{key}_std'] = np.std([m[key] for m in final_metrics_list])
-                
-                # Store results
-                result = {
-                    'tower': tower_name,
-                    'event': event_col,
-                    'model_type': model_type,
-                    'best_mcc': best_mcc,
-                    'n_samples': len(X),
-                    'event_rate': event_rate,
-                    **best_params,
-                    **avg_metrics
-                }
+            if result is not None:
                 all_results.append(result)
                 
-                # Store best params
-                key = f"{tower_name}_{event_col}"
-                best_params_per_event[key] = {
-                    'params': best_params,
-                    'mcc': best_mcc,
-                    'metrics': avg_metrics
-                }
+                if best_params_entry is not None:
+                    best_params_per_event[best_params_entry['key']] = best_params_entry['data']
+                    # Save incrementally
+                    save_best_params_incremental(
+                        output_dir, best_params_per_event,
+                        result['tower'], result['event']
+                    )
                 
-                # Save best params incrementally (so we don't lose progress)
-                save_best_params_incremental(output_dir, best_params_per_event, tower_name, event_col)
-                
-                # Save study results
-                study_df = study.trials_dataframe()
-                study_df.to_csv(output_dir / f"trials_{study_name}.csv", index=False)
-                
-                # Also save running results CSV
+                # Save running results
                 pd.DataFrame(all_results).to_csv(output_dir / 'optimization_results.csv', index=False)
-                
-            except Exception as e:
-                print(f"      ❌ Error: {str(e)}")
-                continue
     
     # Save final results
     results_df = pd.DataFrame(all_results)
@@ -789,17 +859,17 @@ def load_and_prepare_data():
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Fast Hyperparameter Optimization for CNN/TCN Models')
+    parser = argparse.ArgumentParser(description='Parallel Hyperparameter Optimization for CNN/TCN Models with Mixed Precision')
     parser.add_argument('--model', type=str, default='cnn', choices=['cnn', 'tcn', 'both'],
                         help='Model type to optimize')
     parser.add_argument('--n_trials', type=int, default=3,
-                        help='Number of Optuna trials (default: 3 for quick runs)')
+                        help='Number of Optuna trials per experiment')
     parser.add_argument('--n_splits', type=int, default=3,
                         help='Number of CV splits')
-    parser.add_argument('--epochs', type=int, default=100,
-                        help='Max epochs per trial')
-    parser.add_argument('--patience', type=int, default=15,
-                        help='Early stopping patience')
+    parser.add_argument('--epochs', type=int, default=50,
+                        help='Max epochs per trial (reduced for speed)')
+    parser.add_argument('--patience', type=int, default=8,
+                        help='Early stopping patience (reduced for speed)')
     parser.add_argument('--horizon', type=str, default='6hours',
                         choices=list(FORECAST_HORIZONS.keys()),
                         help='Forecast horizon')
@@ -807,6 +877,8 @@ def main():
                         help='GPU device ID')
     parser.add_argument('--output', type=str, default=None,
                         help='Output directory')
+    parser.add_argument('--parallel', type=int, default=None,
+                        help='Number of parallel experiments (default: auto based on CPU cores)')
     
     args = parser.parse_args()
     
@@ -825,7 +897,8 @@ def main():
                 early_stopping_patience=args.patience,
                 forecast_horizon=args.horizon,
                 gpu_id=args.gpu,
-                output_dir=args.output
+                output_dir=args.output,
+                n_parallel=args.parallel
             )
     else:
         run_optimization(
@@ -837,7 +910,8 @@ def main():
             early_stopping_patience=args.patience,
             forecast_horizon=args.horizon,
             gpu_id=args.gpu,
-            output_dir=args.output
+            output_dir=args.output,
+            n_parallel=args.parallel
         )
 
 

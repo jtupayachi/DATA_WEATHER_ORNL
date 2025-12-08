@@ -474,8 +474,11 @@ def train_deep_learning_model(X_train: np.ndarray, y_train: np.ndarray,
     train_dataset = TimeSeriesDataset(X_train, y_train, config.SEQUENCE_LENGTH)
     val_dataset = TimeSeriesDataset(X_val, y_val, config.SEQUENCE_LENGTH)
     
-    train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=config.BATCH_SIZE, shuffle=False)
+    # Note: shuffle=False to preserve temporal order in time-series data
+    train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=False,
+                              num_workers=4, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=config.BATCH_SIZE, shuffle=False,
+                            num_workers=4, pin_memory=True)
     
     # Create model
     input_dim = X_train.shape[1]
