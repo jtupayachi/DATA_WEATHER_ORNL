@@ -385,7 +385,7 @@ class DeepLearningConfig:
         'event_E3_LowTemp_lt0',
         'event_E4_HighWind_Peak_gt25',
         'event_E5_LowWind_lt2',
-        'event_E6_HighTemp_gt24'
+        # 'event_E6_HighTemp_gt24'  # Removed - column doesn't exist in dataset
     ]
     
     # ==================== MODEL PARAMETERS ====================

@@ -462,7 +462,7 @@ class DeepLearningConfig:
         'event_E3_LowTemp_lt0',
         'event_E4_HighWind_Peak_gt25',
         'event_E5_LowWind_lt2',
-        'event_E6_HighTemp_gt24'
+        # 'event_E6_HighTemp_gt24'  # Removed - column doesn't exist in dataset
     ]
     
     # ==================== MODEL PARAMETERS ====================
@@ -1222,11 +1222,11 @@ def save_all_results(all_results: Dict, config: DeepLearningConfig):
                         tower_event_summary[f'{model_type}_{metric}'] = row[metric_col]
             
             # Determine which model is better
-            gru_auc = row.get('gru_auc_roc_mean', 0)
-            lstm_auc = row.get('lstm_auc_roc_mean', 0)
+            cnn_auc = row.get('cnn_auc_roc_mean', 0)
+            tcn_auc = row.get('tcn_auc_roc_mean', 0)
             
-            tower_event_summary['best_model'] = 'gru' if gru_auc >= lstm_auc else 'lstm'
-            tower_event_summary['best_auc'] = max(gru_auc, lstm_auc)
+            tower_event_summary['best_model'] = 'cnn' if cnn_auc >= tcn_auc else 'tcn'
+            tower_event_summary['best_auc'] = max(cnn_auc, tcn_auc)
             
             per_tower_event_summary.append(tower_event_summary)
     
