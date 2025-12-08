@@ -1,14 +1,13 @@
 {
   "experiment": {
-    "timestamp": "20251125_234255",
+    "timestamp": "20251208_155338",
     "description": "Multi-event temporal forecasting with enhanced metrics"
   },
   "events": {
     "target_events": [
       "event_E3_LowTemp_lt0",
       "event_E4_HighWind_Peak_gt25",
-      "event_E5_LowWind_lt2",
-      "event_E6_HighTemp_gt24"
+      "event_E5_LowWind_lt2"
     ],
     "horizon": "6hours",
     "horizon_steps": 24

@@ -217,7 +217,7 @@ TARGET_EVENTS = [
     'event_E3_LowTemp_lt0',
     'event_E4_HighWind_Peak_gt25',
     'event_E5_LowWind_lt2',
-    'event_E6_HighTemp_gt24'
+    
 ]
 
 
@@ -558,16 +558,42 @@ class OptunaObjective:
         return np.mean(mcc_scores)
 
 
+def save_best_params_incremental(output_dir: Path, best_params_per_event: dict, tower: str, event: str):
+    """Save best parameters incrementally as they improve"""
+    best_params_file = output_dir / 'best_params.json'
+    
+    # Load existing params if file exists
+    if best_params_file.exists():
+        with open(best_params_file, 'r') as f:
+            existing_params = json.load(f)
+    else:
+        existing_params = {}
+    
+    # Update with new best params
+    key = f"{tower}_{event}"
+    existing_params[key] = best_params_per_event[key]
+    
+    # Save updated params
+    with open(best_params_file, 'w') as f:
+        json.dump(existing_params, f, indent=2)
+    
+    print(f"      💾 Best params saved to {best_params_file}")
+
+
 def run_optimization(filtered_dfs: Dict[str, pd.DataFrame], 
                      model_type: str = 'cnn',
-                     n_trials: int = 50,
+                     n_trials: int = 3,  # Reduced to 3 trials for faster execution
                      n_splits: int = 3,
                      num_epochs: int = 100,
                      early_stopping_patience: int = 15,
                      forecast_horizon: str = '6hours',
                      gpu_id: int = 0,
                      output_dir: str = None):
-    """Run Bayesian hyperparameter optimization"""
+    """Run Bayesian hyperparameter optimization with limited trials
+    
+    Args:
+        n_trials: Number of configurations to try (default: 3 for quick runs)
+    """
     
     device = setup_gpu(gpu_id)
     
@@ -582,13 +608,14 @@ def run_optimization(filtered_dfs: Dict[str, pd.DataFrame],
     best_params_per_event = {}
     
     print("\n" + "="*80)
-    print(f"BAYESIAN HYPERPARAMETER OPTIMIZATION - {model_type.upper()}")
+    print(f"FAST HYPERPARAMETER OPTIMIZATION - {model_type.upper()}")
     print("="*80)
     print(f"Optimization metric: MCC (Matthews Correlation Coefficient)")
-    print(f"Number of trials: {n_trials}")
+    print(f"Number of trials: {n_trials} (quick mode)")
     print(f"CV folds: {n_splits}")
     print(f"Forecast horizon: {forecast_horizon}")
     print(f"Device: {device}")
+    print(f"Best params saved incrementally to: {output_dir / 'best_params.json'}")
     print("="*80)
     
     for tower_name, tower_df in filtered_dfs.items():
@@ -683,19 +710,25 @@ def run_optimization(filtered_dfs: Dict[str, pd.DataFrame],
                     'metrics': avg_metrics
                 }
                 
+                # Save best params incrementally (so we don't lose progress)
+                save_best_params_incremental(output_dir, best_params_per_event, tower_name, event_col)
+                
                 # Save study results
                 study_df = study.trials_dataframe()
                 study_df.to_csv(output_dir / f"trials_{study_name}.csv", index=False)
+                
+                # Also save running results CSV
+                pd.DataFrame(all_results).to_csv(output_dir / 'optimization_results.csv', index=False)
                 
             except Exception as e:
                 print(f"      ❌ Error: {str(e)}")
                 continue
     
-    # Save all results
+    # Save final results
     results_df = pd.DataFrame(all_results)
     results_df.to_csv(output_dir / 'optimization_results.csv', index=False)
     
-    # Save best parameters
+    # Final save of best parameters
     with open(output_dir / 'best_params.json', 'w') as f:
         json.dump(best_params_per_event, f, indent=2)
     
@@ -756,11 +789,11 @@ def load_and_prepare_data():
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Bayesian Hyperparameter Optimization for CNN/TCN Models')
+    parser = argparse.ArgumentParser(description='Fast Hyperparameter Optimization for CNN/TCN Models')
     parser.add_argument('--model', type=str, default='cnn', choices=['cnn', 'tcn', 'both'],
                         help='Model type to optimize')
-    parser.add_argument('--n_trials', type=int, default=50,
-                        help='Number of Optuna trials')
+    parser.add_argument('--n_trials', type=int, default=3,
+                        help='Number of Optuna trials (default: 3 for quick runs)')
     parser.add_argument('--n_splits', type=int, default=3,
                         help='Number of CV splits')
     parser.add_argument('--epochs', type=int, default=100,
