@@ -129,26 +129,40 @@ This project implements a **multi-event temporal forecasting pipeline** for pred
 
 ---
 
-## 🏃 Running the Scripts
+## 🏃 Running the Scripts for optuna opt
 
 ```bash
-# ML models (default)
-python JT_Extreme_event_labeler_ML.py
 
 # ML models (Optuna optimization)
-python JT_Extreme_event_labeler_ML_optuna.py --model lightgbm --n_trials 50
+python JT_Extreme_event_labeler_ML_optuna.py --model lightgbm --gpu 0
+python JT_Extreme_event_labeler_ML_optuna.py --model xgboost --gpu 1
+
+
+# Deep Learning (Optuna)
+python JT_Extreme_event_labeler_DL_optuna.py --model gru --gpu 0
+python JT_Extreme_event_labeler_DL_optuna.py --model lstm --gpu 1
+
+
+# CNN/TCN (Optuna)
+python JT_Extreme_event_labeler_CNN_optuna.py --model tcn --gpu 0
+python JT_Extreme_event_labeler_CNN_optuna.py --model cnn --gpu 1
+```
+
+
+## 🏃 Running the Scripts for final results
+
+```bash
+
+# ML models (default)
+python JT_Extreme_event_labeler_ML.py
 
 # Deep Learning (default)
 python JT_Extreme_event_labeler_DL.py
 
-# Deep Learning (Optuna)
-python JT_Extreme_event_labeler_DL_optuna.py --model gru --n_trials 50 --gpu 0
-
 # CNN/TCN (default)
 python JT_Extreme_event_labeler_CNN.py
 
-# CNN/TCN (Optuna)
-python JT_Extreme_event_labeler_CNN_optuna.py --model tcn --n_trials 50 --gpu 0
+
 ```
 
 ---

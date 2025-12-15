@@ -162,6 +162,128 @@ import gc
 warnings.filterwarnings('ignore')
 
 
+# ==================== OPTUNA OPTIMIZED HYPERPARAMETERS ====================
+# Load best parameters dynamically from Optuna results folders
+
+def load_optuna_best_params(model_type: str = 'cnn') -> Dict:
+    """
+    Load best parameters from Optuna results folders.
+    
+    Args:
+        model_type: 'cnn' or 'tcn'
+    
+    Returns:
+        Dictionary mapping tower_event keys to their best parameters
+    """
+    import glob
+    
+    # Find the most recent optuna results folder for this model type
+    if model_type == 'cnn':
+        pattern = "optuna_cnn_results_cnn_*"
+    else:  # tcn
+        pattern = "optuna_cnn_results_tcn_*"
+    
+    folders = sorted(glob.glob(pattern), reverse=True)  # Most recent first
+    
+    if not folders:
+        print(f"⚠️  No Optuna results folder found for {model_type}, using defaults")
+        return {}
+    
+    folder = folders[0]
+    best_params_file = os.path.join(folder, "best_params.json")
+    
+    if not os.path.exists(best_params_file):
+        print(f"⚠️  No best_params.json found in {folder}, using defaults")
+        return {}
+    
+    print(f"📂 Loading {model_type.upper()} best params from: {folder}")
+    
+    with open(best_params_file, 'r') as f:
+        raw_params = json.load(f)
+    
+    # Convert format: extract just the 'params' dict for each tower-event
+    best_params = {}
+    for key, value in raw_params.items():
+        if 'params' in value:
+            best_params[key] = value['params']
+        else:
+            best_params[key] = value
+    
+    print(f"   ✓ Loaded {len(best_params)} tower-event configurations")
+    return best_params
+
+
+# Global variables to cache loaded params (loaded once at startup)
+OPTUNA_BEST_PARAMS_CNN = None
+OPTUNA_BEST_PARAMS_TCN = None
+
+
+def get_optimized_params(tower_name: str, event_name: str, model_type: str, config) -> Dict:
+    """
+    Get optimized hyperparameters for a specific tower-event-model combination.
+    Loads from Optuna results folders dynamically.
+    
+    Returns:
+        params: Dictionary of model hyperparameters
+    """
+    global OPTUNA_BEST_PARAMS_CNN, OPTUNA_BEST_PARAMS_TCN
+    
+    # Lazy load params on first call
+    if model_type == 'cnn':
+        if OPTUNA_BEST_PARAMS_CNN is None:
+            OPTUNA_BEST_PARAMS_CNN = load_optuna_best_params('cnn')
+        best_params_dict = OPTUNA_BEST_PARAMS_CNN
+    else:  # tcn
+        if OPTUNA_BEST_PARAMS_TCN is None:
+            OPTUNA_BEST_PARAMS_TCN = load_optuna_best_params('tcn')
+        best_params_dict = OPTUNA_BEST_PARAMS_TCN
+    
+    key = f"{tower_name}_{event_name}"
+    
+    if best_params_dict and key in best_params_dict:
+        opt_params = best_params_dict[key]
+        return {
+            'sequence_length': opt_params.get('sequence_length', config.SEQUENCE_LENGTH),
+            'batch_size': opt_params.get('batch_size', config.BATCH_SIZE),
+            'learning_rate': opt_params.get('learning_rate', config.LEARNING_RATE),
+            'weight_decay': opt_params.get('weight_decay', 0.0),
+            'hidden_dim': opt_params.get('hidden_dim', config.CNN_PARAMS['hidden_dim'] if model_type == 'cnn' else config.TCN_PARAMS['hidden_dim']),
+            'num_layers': opt_params.get('num_layers', config.CNN_PARAMS['num_layers'] if model_type == 'cnn' else config.TCN_PARAMS['num_layers']),
+            'dropout': opt_params.get('dropout', config.CNN_PARAMS['dropout'] if model_type == 'cnn' else config.TCN_PARAMS['dropout']),
+            'kernel_size': opt_params.get('kernel_size', config.CNN_PARAMS['kernel_size'] if model_type == 'cnn' else config.TCN_PARAMS['kernel_size']),
+            'optimizer': opt_params.get('optimizer', 'adamw'),
+            'scheduler': opt_params.get('scheduler', 'none'),
+        }
+    else:
+        # Fall back to default params
+        print(f"      ⚠️  No Optuna params for {key}, using defaults")
+        if model_type == 'cnn':
+            return {
+                'sequence_length': config.SEQUENCE_LENGTH,
+                'batch_size': config.BATCH_SIZE,
+                'learning_rate': config.LEARNING_RATE,
+                'weight_decay': 0.0,
+                'hidden_dim': config.CNN_PARAMS['hidden_dim'],
+                'num_layers': config.CNN_PARAMS['num_layers'],
+                'dropout': config.CNN_PARAMS['dropout'],
+                'kernel_size': config.CNN_PARAMS['kernel_size'],
+                'optimizer': 'adamw',
+                'scheduler': 'none',
+            }
+        else:  # tcn
+            return {
+                'sequence_length': config.SEQUENCE_LENGTH,
+                'batch_size': config.BATCH_SIZE,
+                'learning_rate': config.LEARNING_RATE,
+                'weight_decay': 0.0,
+                'hidden_dim': config.TCN_PARAMS['hidden_dim'],
+                'num_layers': config.TCN_PARAMS['num_layers'],
+                'dropout': config.TCN_PARAMS['dropout'],
+                'kernel_size': config.TCN_PARAMS['kernel_size'],
+                'optimizer': 'adamw',
+                'scheduler': 'none',
+            }
+
 
 def clear_gpu_memory():
     """Clear GPU memory cache"""
@@ -532,12 +654,25 @@ def calculate_all_metrics(y_true, y_pred, y_pred_proba):
 
 
 # ==================== MODEL CREATION ====================
-def create_model(model_type: str, input_dim: int, config: DeepLearningConfig):
-    """Create model based on type"""
+def create_model(model_type: str, input_dim: int, config: DeepLearningConfig, optimized_params: Dict = None):
+    """Create model based on type with optional optimized parameters"""
+    if optimized_params:
+        params = {
+            'hidden_dim': optimized_params.get('hidden_dim', 128),
+            'num_layers': optimized_params.get('num_layers', 3),
+            'dropout': optimized_params.get('dropout', 0.3),
+            'kernel_size': optimized_params.get('kernel_size', 3)
+        }
+    else:
+        if model_type == 'cnn':
+            params = config.CNN_PARAMS
+        else:
+            params = config.TCN_PARAMS
+    
     if model_type == 'cnn':
-        return CNNModel(input_dim, **config.CNN_PARAMS)
+        return CNNModel(input_dim, **params)
     elif model_type == 'tcn':
-        return TCNModel(input_dim, **config.TCN_PARAMS)
+        return TCNModel(input_dim, **params)
     else:
         raise ValueError(f"Unknown model type: {model_type}")
 
@@ -546,28 +681,50 @@ def create_model(model_type: str, input_dim: int, config: DeepLearningConfig):
 def train_deep_learning_model(X_train: np.ndarray, y_train: np.ndarray,
                                X_val: np.ndarray, y_val: np.ndarray,
                                model_type: str, config: DeepLearningConfig,
-                               class_weights: Optional[torch.Tensor] = None):
-    """Train a deep learning model"""
+                               class_weights: Optional[torch.Tensor] = None,
+                               optimized_params: Dict = None):
+    """Train a deep learning model with optional Optuna-optimized hyperparameters
     
-    # Create datasets
-    train_dataset = TimeSeriesDataset(X_train, y_train, config.SEQUENCE_LENGTH)
-    val_dataset = TimeSeriesDataset(X_val, y_val, config.SEQUENCE_LENGTH)
+    Args:
+        X_train, y_train: Training data
+        X_val, y_val: Validation data
+        model_type: 'cnn' or 'tcn'
+        config: DeepLearningConfig object
+        class_weights: Optional class weights tensor
+        optimized_params: Optional dictionary with optimized hyperparameters from Optuna
+    """
+    
+    # Use optimized params if provided, otherwise use config defaults
+    sequence_length = optimized_params.get('sequence_length', config.SEQUENCE_LENGTH) if optimized_params else config.SEQUENCE_LENGTH
+    batch_size = optimized_params.get('batch_size', config.BATCH_SIZE) if optimized_params else config.BATCH_SIZE
+    learning_rate = optimized_params.get('learning_rate', config.LEARNING_RATE) if optimized_params else config.LEARNING_RATE
+    weight_decay = optimized_params.get('weight_decay', 0.0) if optimized_params else 0.0
+    
+    # Create datasets with optimized sequence length
+    train_dataset = TimeSeriesDataset(X_train, y_train, sequence_length)
+    val_dataset = TimeSeriesDataset(X_val, y_val, sequence_length)
     
     # Note: shuffle=False to preserve temporal order in time-series data
-    train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=False,
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False,
                               num_workers=4, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=config.BATCH_SIZE, shuffle=False,
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
                             num_workers=4, pin_memory=True)
     
-    # Create model
+    # Create model with optimized architecture params
     input_dim = X_train.shape[1]
-    model = create_model(model_type, input_dim, config)
+    model = create_model(model_type, input_dim, config, optimized_params)
     model = model.to(config.DEVICE)
     
     # Loss function - use reduction='none' for per-sample weighting
     criterion = nn.BCELoss(reduction='none')
     
-    optimizer = torch.optim.Adam(model.parameters(), lr=config.LEARNING_RATE)
+    # Optimizer selection based on optimized params
+    optimizer_type = optimized_params.get('optimizer', 'adamw') if optimized_params else 'adamw'
+    if optimizer_type == 'adamw':
+        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    else:
+        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', 
                                                             factor=0.5, patience=5)
     
@@ -654,10 +811,14 @@ def train_deep_learning_model(X_train: np.ndarray, y_train: np.ndarray,
 
 
 
-def predict_with_model(model, X: np.ndarray, config: DeepLearningConfig) -> np.ndarray:
+def predict_with_model(model, X: np.ndarray, config: DeepLearningConfig, 
+                       sequence_length: int = None, batch_size: int = None) -> np.ndarray:
     """Make predictions with trained model"""
-    dataset = TimeSeriesDataset(X, np.zeros(len(X)), config.SEQUENCE_LENGTH)
-    loader = DataLoader(dataset, batch_size=config.BATCH_SIZE, shuffle=False)
+    seq_len = sequence_length if sequence_length else config.SEQUENCE_LENGTH
+    bs = batch_size if batch_size else config.BATCH_SIZE
+    
+    dataset = TimeSeriesDataset(X, np.zeros(len(X)), seq_len)
+    loader = DataLoader(dataset, batch_size=bs, shuffle=False)
     
     model.eval()
     predictions = []
@@ -677,8 +838,21 @@ def train_single_tower_event_models(X: pd.DataFrame, y: pd.Series,
                                     config: DeepLearningConfig,
                                     tower_name: str,
                                     event_name: str,
-                                    metadata: pd.DataFrame = None) -> Dict:
-    """Train deep learning models for ONE tower and ONE event"""
+                                    metadata: pd.DataFrame = None,
+                                    optimized_params: Dict[str, Dict] = None,
+                                    use_optuna_params: bool = True) -> Dict:
+    """Train deep learning models for ONE tower and ONE event with Optuna-optimized hyperparameters
+    
+    Args:
+        X: Feature dataframe
+        y: Target series
+        config: DeepLearningConfig object
+        tower_name: Name of the tower
+        event_name: Name of the event
+        metadata: Optional metadata dataframe
+        optimized_params: Dictionary mapping model_type -> optimized parameters
+        use_optuna_params: Whether to use Optuna-optimized hyperparameters
+    """
     
     tscv = TimeSeriesSplit(n_splits=config.N_SPLITS)
     
@@ -689,7 +863,8 @@ def train_single_tower_event_models(X: pd.DataFrame, y: pd.Series,
     results = {
         'tower': tower_name,
         'event': event_name,
-        'models': {}
+        'models': {},
+        'used_optuna_params': use_optuna_params
     }
     
     # Initialize results for each model type
@@ -697,7 +872,8 @@ def train_single_tower_event_models(X: pd.DataFrame, y: pd.Series,
         results['models'][model_type] = {
             'trained_models': [],
             'fold_metadata': [],
-            'training_history': []
+            'training_history': [],
+            'optimized_params': optimized_params.get(model_type, {}) if optimized_params else {}
         }
         # Initialize all metrics
         for metric in config.CLASSIFICATION_METRICS:
@@ -734,16 +910,24 @@ def train_single_tower_event_models(X: pd.DataFrame, y: pd.Series,
         for model_type in config.MODELS_TO_TRAIN:
             print(f"[{model_type}]", end=' ')
             
+            # Get optimized params for this model type if available
+            model_opt_params = optimized_params.get(model_type, None) if optimized_params else None
+            
             model, history = train_deep_learning_model(
                 X_train, y_train, X_val, y_val,
-                model_type, config, class_weights
+                model_type, config, class_weights,
+                optimized_params=model_opt_params
             )
             
+            # Get sequence length from optimized params or config
+            seq_len = model_opt_params.get('sequence_length', config.SEQUENCE_LENGTH) if model_opt_params else config.SEQUENCE_LENGTH
+            batch_size = model_opt_params.get('batch_size', config.BATCH_SIZE) if model_opt_params else config.BATCH_SIZE
+            
             # Predict on validation set
-            y_pred_proba = predict_with_model(model, X_val, config)
+            y_pred_proba = predict_with_model(model, X_val, config, sequence_length=seq_len, batch_size=batch_size)
             
             # Need to adjust indices for sequence length
-            valid_indices = slice(config.SEQUENCE_LENGTH - 1, len(y_val))
+            valid_indices = slice(seq_len - 1, len(y_val))
             y_val_adjusted = y_val[valid_indices]
             
             # Optimal threshold
@@ -933,18 +1117,26 @@ def prepare_temporal_features(df: pd.DataFrame, config: DeepLearningConfig,
 
 # ==================== RUN EXPERIMENTS ====================
 def run_multi_event_experiments(filtered_dfs: Dict[str, pd.DataFrame], 
-                                config: DeepLearningConfig) -> Dict:
-    """Run experiments for all towers and all events"""
+                                config: DeepLearningConfig,
+                                use_optuna_params: bool = True) -> Dict:
+    """Run experiments for all towers and all events with Optuna-optimized hyperparameters
+    
+    Args:
+        filtered_dfs: Dictionary of tower dataframes
+        config: DeepLearningConfig object
+        use_optuna_params: Whether to use Optuna-optimized hyperparameters (default True)
+    """
     
     all_results = {}
     
     print("\n" + "="*80)
-    print("RUNNING MULTI-EVENT DEEP LEARNING EXPERIMENTS")
+    print("RUNNING MULTI-EVENT DEEP LEARNING EXPERIMENTS WITH OPTUNA-OPTIMIZED HYPERPARAMETERS")
     print("="*80)
     print(f"Device: {config.DEVICE}")
     print(f"Models: {', '.join(config.MODELS_TO_TRAIN)}")
-    print(f"Sequence Length: {config.SEQUENCE_LENGTH}")
-    print(f"Batch Size: {config.BATCH_SIZE}")
+    print(f"Using Optuna parameters: {use_optuna_params}")
+    print(f"Default Sequence Length: {config.SEQUENCE_LENGTH}")
+    print(f"Default Batch Size: {config.BATCH_SIZE}")
     print("="*80)
     
     for tower_name, tower_df in filtered_dfs.items():
@@ -979,17 +1171,31 @@ def run_multi_event_experiments(filtered_dfs: Dict[str, pd.DataFrame],
                 print(f"      ✓ Samples: {len(y):,} | Events: {y.sum():,} ({y.mean()*100:.2f}%)")
                 print(f"      ✓ Features: {len(feature_cols)}")
                 
+                # Get optimized model hyperparameters for each model type
+                optimized_params = {}
+                if use_optuna_params:
+                    for model_type in config.MODELS_TO_TRAIN:
+                        params = get_optimized_params(tower_name, event_col, model_type, config)
+                        optimized_params[model_type] = params
+                        print(f"      📊 {model_type.upper()} params: seq_len={params['sequence_length']}, "
+                              f"batch={params['batch_size']}, lr={params['learning_rate']:.6f}, "
+                              f"hidden={params['hidden_dim']}, layers={params['num_layers']}")
+                
                 metadata = tower_df.loc[X.index, ['timestamp']].copy() if 'timestamp' in tower_df.columns else None
                 
                 results = train_single_tower_event_models(
-                    X, y, config, tower_name, event_col, metadata
+                    X, y, config, tower_name, event_col, metadata,
+                    optimized_params=optimized_params if use_optuna_params else None,
+                    use_optuna_params=use_optuna_params
                 )
                 
                 all_results[tower_name][event_col] = {
                     'results': results,
                     'importance': None,  # Deep learning models don't have feature importance
                     'n_samples': len(y),
-                    'event_rate': float(y.mean())
+                    'event_rate': float(y.mean()),
+                    'used_optuna_params': use_optuna_params,
+                    'optimized_params': optimized_params if use_optuna_params else None
                 }
                 
                 # Print summary
@@ -998,7 +1204,8 @@ def run_multi_event_experiments(filtered_dfs: Dict[str, pd.DataFrame],
                     model_results = results['models'][model_type]
                     mean_auc = np.mean(model_results['auc_roc'])
                     mean_f1 = np.mean(model_results['f1'])
-                    print(f"         {model_type:10s}: AUC={mean_auc:.4f}, F1={mean_f1:.4f}")
+                    mean_mcc = np.mean(model_results['mcc'])
+                    print(f"         {model_type:10s}: AUC={mean_auc:.4f}, F1={mean_f1:.4f}, MCC={mean_mcc:.4f}")
                 
             except Exception as e:
                 print(f"      ❌ Error: {str(e)}")
@@ -1333,23 +1540,26 @@ def save_all_results(all_results: Dict, config: DeepLearningConfig):
 
 # ==================== MAIN EXECUTION ====================
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'  # ✅ Force only GPU 1 to be visible
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'  # ✅ Force only GPU 0 to be visible
 
 config = DeepLearningConfig()
 
 print("="*70)
-print("MULTI-EVENT TEMPORAL FORECASTING - DEEP LEARNING")
+print("MULTI-EVENT TEMPORAL FORECASTING - DEEP LEARNING (CNN & TCN)")
 print("="*70)
 print(f"Device: {config.DEVICE}")
-print(f"Batch size: {config.BATCH_SIZE}")
+print(f"Default Batch size: {config.BATCH_SIZE}")
+print(f"Default Sequence Length: {config.SEQUENCE_LENGTH}")
 print("="*70)
 
 # Clear GPU memory before starting
 clear_gpu_memory()
 get_gpu_memory_info()
 
-# Run experiments
-all_results = run_multi_event_experiments(filtered_dfs, config)
+# ==================== RUN WITH OPTUNA-OPTIMIZED PARAMETERS ====================
+# Set use_optuna_params=True to use best hyperparameters from Optuna optimization
+# Set use_optuna_params=False to use default config parameters
+all_results = run_multi_event_experiments(filtered_dfs, config, use_optuna_params=True)
 
 
 # Save results

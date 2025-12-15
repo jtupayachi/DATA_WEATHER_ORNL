@@ -16,6 +16,7 @@ Date: December 2024
 """
 
 import os
+import json
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -44,14 +45,29 @@ except ImportError:
 OUTPUT_DIR = 'viz_4d_isometric'
 DATA_FILE = '/home/jose/DATA_WEATHER_ORNL/fully_labeled_weather_data_with_events.csv'
 
-TOWER_COORDINATES = {
-    'TOWA': {'lat': 35.9312, 'lon': -84.3108, 'elevation_m': 247, 'color': '#e41a1c'},
-    'TOWB': {'lat': 35.9285, 'lon': -84.3045, 'elevation_m': 278, 'color': '#377eb8'},
-    'TOWD': {'lat': 35.935, 'lon': -84.32, 'elevation_m': 287, 'color': '#4daf4a'},
-    'TOWF': {'lat': 35.922, 'lon': -84.315, 'elevation_m': 274, 'color': '#984ea3'},
-    'TOWS': {'lat': 35.938, 'lon': -84.298, 'elevation_m': 280, 'color': '#ff7f00'},
-    'TOWY': {'lat': 35.9255, 'lon': -84.325, 'elevation_m': 262, 'color': '#a65628'},
-}
+def load_tower_metadata(json_path='tower_metadata_generated.json'):
+    """Load tower coordinates and metadata from JSON file."""
+    # Try multiple possible locations for the JSON file
+    possible_paths = [
+        json_path,
+        os.path.join(os.path.dirname(__file__), json_path),
+        os.path.join(os.getcwd(), json_path),
+    ]
+    
+    for path in possible_paths:
+        if os.path.exists(path):
+            print(f"Loading tower metadata from: {path}")
+            with open(path, 'r') as f:
+                data = json.load(f)
+            return data['tower_coordinates']
+    
+    raise FileNotFoundError(
+        f"Could not find {json_path}. Tried locations:\n" + 
+        "\n".join(f"  - {p}" for p in possible_paths)
+    )
+
+# Load tower coordinates from JSON
+TOWER_COORDINATES = load_tower_metadata()
 
 WEATHER_VARS = {
     'TempC_015m': {'name': 'Temperature', 'unit': '°C', 'cmap': 'RdYlBu_r'},

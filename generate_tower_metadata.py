@@ -742,54 +742,44 @@ def format_python_output(tower_coords, region_info, include_colors=True):
     for tid in sorted(tower_coords.keys()):
         data = tower_coords[tid]
         lines.append(f"    '{tid}': {{")
-        lines.append(f"        'lat': {data['lat']}, 'lon': {data['lon']}, 'elevation_m': {data['elevation_m']},")
+        lines.append(f"        'lat': {data['lat']}, 'lon': {data['lon']},")
+        lines.append(f"        'elevation_m': {data['elevation_m']},             # Terrain elevation (from API)")
+        lines.append(f"        'elevation_msl_m': {data['elevation_msl_m']},        # Official ground elevation MSL")
+        lines.append(f"        'height_m': {data['height_m']},                   # Tower/instrument height")
         lines.append(f"        'name': '{data['name']}',")
         lines.append(f"        'terrain_type': '{data['terrain_type']}',")
-        lines.append(f"        'slope_deg': {data['slope_deg']},           # Terrain slope in degrees")
+        lines.append(f"        'slope_deg': {data['slope_deg']},             # Terrain slope in degrees")
         
         # Aspect comment
         aspect_dir = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][int((data['aspect_deg'] + 22.5) / 45) % 8]
-        lines.append(f"        'aspect_deg': {data['aspect_deg']},          # {aspect_dir}-facing")
+        lines.append(f"        'aspect_deg': {data['aspect_deg']},            # {aspect_dir}-facing")
         
-        lines.append(f"        'canopy_cover_pct': {data['canopy_cover_pct']},     # Vegetation canopy coverage")
+        lines.append(f"        'canopy_cover_pct': {data['canopy_cover_pct']},       # Vegetation canopy coverage")
         
         # Ridge distance comment
         if data['dist_to_ridge_m'] == 0:
-            lines.append(f"        'dist_to_ridge_m': {data['dist_to_ridge_m']},       # On the ridge")
+            lines.append(f"        'dist_to_ridge_m': {data['dist_to_ridge_m']},         # On the ridge")
         else:
-            lines.append(f"        'dist_to_ridge_m': {data['dist_to_ridge_m']},     # Distance to nearest ridge")
+            lines.append(f"        'dist_to_ridge_m': {data['dist_to_ridge_m']},       # Distance to nearest ridge")
         
         lines.append(f"        'soil_type': '{data['soil_type']}',")
         lines.append(f"        'land_use': '{data['land_use']}',")
         
         if include_colors:
-            lines.append(f"        'color': '{data['color']}',  # Visualization color")
+            lines.append(f"        'color': '{data['color']}',    # Visualization color")
         
         lines.append("    },")
     
     lines.append("}")
     lines.append("")
     
-    # TOWER_COORDINATES without colors (for viz_importance.py style)
-    lines.append("# Alternative version without colors:")
-    lines.append("# TOWER_COORDINATES = {")
+    # TOWER_COORDINATES minimal version (for quick reference)
+    lines.append("# Minimal version with key fields:")
+    lines.append("# TOWER_COORDINATES_MINIMAL = {")
     
     for tid in sorted(tower_coords.keys()):
         data = tower_coords[tid]
-        lines.append(f"#     '{tid}': {{")
-        lines.append(f"#         'lat': {data['lat']}, 'lon': {data['lon']}, 'elevation_m': {data['elevation_m']},")
-        lines.append(f"#         'name': '{data['name']}',")
-        lines.append(f"#         'terrain_type': '{data['terrain_type']}',")
-        lines.append(f"#         'slope_deg': {data['slope_deg']},")
-        
-        aspect_dir = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][int((data['aspect_deg'] + 22.5) / 45) % 8]
-        lines.append(f"#         'aspect_deg': {data['aspect_deg']},          # {aspect_dir}-facing")
-        
-        lines.append(f"#         'canopy_cover_pct': {data['canopy_cover_pct']},")
-        lines.append(f"#         'dist_to_ridge_m': {data['dist_to_ridge_m']},")
-        lines.append(f"#         'soil_type': '{data['soil_type']}',")
-        lines.append(f"#         'land_use': '{data['land_use']}',")
-        lines.append("#     },")
+        lines.append(f"#     '{tid}': {{'lat': {data['lat']}, 'lon': {data['lon']}, 'elevation_msl_m': {data['elevation_msl_m']}, 'height_m': {data['height_m']}}},")
     
     lines.append("# }")
     lines.append("")
@@ -819,9 +809,12 @@ def format_python_output(tower_coords, region_info, include_colors=True):
 def main():
     """Main execution function."""
     
+    # Preprocess input coordinates (convert UTM to lat/lon)
+    processed_coords = preprocess_input_coordinates(INPUT_TOWER_COORDINATES, utm_zone=16)
+    
     # Generate metadata
     tower_coords, region_info = generate_tower_metadata(
-        INPUT_TOWER_COORDINATES,
+        processed_coords,
         INPUT_REGION_INFO,
         TOWER_NAMES,
         TOWER_COLORS

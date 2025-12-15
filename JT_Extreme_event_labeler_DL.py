@@ -161,6 +161,95 @@ import gc
 warnings.filterwarnings('ignore')
 
 
+# ==================== OPTUNA OPTIMIZED HYPERPARAMETERS ====================
+# Load best parameters dynamically from Optuna results folders
+
+def load_optuna_best_params(model_type: str = 'gru') -> Dict:
+    """
+    Load best parameters from Optuna results folders.
+    
+    Args:
+        model_type: 'gru' or 'lstm'
+    
+    Returns:
+        Dictionary mapping tower_event keys to their best parameters
+    """
+    import glob
+    
+    # Find the most recent optuna results folder for this model type
+    pattern = f"optuna_results_{model_type}_*"
+    
+    folders = sorted(glob.glob(pattern), reverse=True)  # Most recent first
+    
+    if not folders:
+        print(f"⚠️  No Optuna results folder found for {model_type}")
+        return {}
+    
+    folder = folders[0]
+    best_params_file = os.path.join(folder, "best_params.json")
+    
+    if not os.path.exists(best_params_file):
+        print(f"⚠️  No best_params.json found in {folder}")
+        return {}
+    
+    print(f"📂 Loading {model_type.upper()} best params from: {folder}")
+    
+    with open(best_params_file, 'r') as f:
+        raw_params = json.load(f)
+    
+    # Convert format: extract just the 'params' dict for each tower-event
+    best_params = {}
+    for key, value in raw_params.items():
+        if isinstance(value, dict) and 'params' in value:
+            best_params[key] = value['params']
+        else:
+            best_params[key] = value
+    
+    print(f"   ✓ Loaded {len(best_params)} tower-event configurations")
+    return best_params
+
+
+# Global variables to cache loaded params (loaded once at startup)
+OPTUNA_BEST_PARAMS_GRU = None
+OPTUNA_BEST_PARAMS_LSTM = None
+
+
+def get_optimized_params(tower_name: str, event_name: str, model_type: str, config) -> Dict:
+    """
+    Get optimized hyperparameters for a specific tower-event-model combination.
+    Loads from Optuna results folders dynamically.
+    
+    Returns:
+        params: Dictionary of model hyperparameters
+    """
+    global OPTUNA_BEST_PARAMS_GRU, OPTUNA_BEST_PARAMS_LSTM
+    
+    # Lazy load params on first call
+    if model_type == 'gru':
+        if OPTUNA_BEST_PARAMS_GRU is None:
+            OPTUNA_BEST_PARAMS_GRU = load_optuna_best_params('gru')
+        best_params_dict = OPTUNA_BEST_PARAMS_GRU
+    else:  # lstm
+        if OPTUNA_BEST_PARAMS_LSTM is None:
+            OPTUNA_BEST_PARAMS_LSTM = load_optuna_best_params('lstm')
+        best_params_dict = OPTUNA_BEST_PARAMS_LSTM
+    
+    key = f"{tower_name}_{event_name}"
+    
+    if best_params_dict and key in best_params_dict:
+        params = best_params_dict[key]
+        print(f"         ✓ Using Optuna-optimized params for {model_type.upper()}:")
+        print(f"           seq_len={params.get('sequence_length', config.SEQUENCE_LENGTH)}, "
+              f"batch={params.get('batch_size', config.BATCH_SIZE)}, "
+              f"lr={params.get('learning_rate', config.LEARNING_RATE):.6f}, "
+              f"hidden={params.get('hidden_dim', 128)}, "
+              f"layers={params.get('num_layers', 2)}, "
+              f"dropout={params.get('dropout', 0.3):.3f}")
+        return params
+    else:
+        print(f"         ⚠️  No Optuna params for {key}, using config defaults")
+        return {}
+
 
 def clear_gpu_memory():
     """Clear GPU memory cache"""
@@ -452,12 +541,33 @@ def calculate_all_metrics(y_true, y_pred, y_pred_proba):
 
 
 # ==================== MODEL CREATION ====================
-def create_model(model_type: str, input_dim: int, config: DeepLearningConfig):
-    """Create model based on type"""
+def create_model(model_type: str, input_dim: int, config: DeepLearningConfig, optimized_params: Dict = None):
+    """Create model based on type with optional optimized parameters"""
+    if optimized_params:
+        # Use optimized architecture params
+        hidden_dim = optimized_params.get('hidden_dim', 128)
+        num_layers = optimized_params.get('num_layers', 2)
+        dropout = optimized_params.get('dropout', 0.3)
+        bidirectional = optimized_params.get('bidirectional', True)
+    else:
+        # Use config defaults
+        if model_type == 'gru':
+            hidden_dim = config.GRU_PARAMS['hidden_dim']
+            num_layers = config.GRU_PARAMS['num_layers']
+            dropout = config.GRU_PARAMS['dropout']
+            bidirectional = config.GRU_PARAMS['bidirectional']
+        else:
+            hidden_dim = config.LSTM_PARAMS['hidden_dim']
+            num_layers = config.LSTM_PARAMS['num_layers']
+            dropout = config.LSTM_PARAMS['dropout']
+            bidirectional = config.LSTM_PARAMS['bidirectional']
+    
     if model_type == 'gru':
-        return GRUModel(input_dim, **config.GRU_PARAMS)
+        return GRUModel(input_dim, hidden_dim=hidden_dim, num_layers=num_layers, 
+                        dropout=dropout, bidirectional=bidirectional)
     elif model_type == 'lstm':
-        return LSTMModel(input_dim, **config.LSTM_PARAMS)
+        return LSTMModel(input_dim, hidden_dim=hidden_dim, num_layers=num_layers,
+                         dropout=dropout, bidirectional=bidirectional)
     else:
         raise ValueError(f"Unknown model type: {model_type}")
 
@@ -467,28 +577,50 @@ def create_model(model_type: str, input_dim: int, config: DeepLearningConfig):
 def train_deep_learning_model(X_train: np.ndarray, y_train: np.ndarray,
                                X_val: np.ndarray, y_val: np.ndarray,
                                model_type: str, config: DeepLearningConfig,
-                               class_weights: Optional[torch.Tensor] = None):
-    """Train a deep learning model"""
+                               class_weights: Optional[torch.Tensor] = None,
+                               optimized_params: Dict = None):
+    """Train a deep learning model with optional Optuna-optimized hyperparameters
     
-    # Create datasets
-    train_dataset = TimeSeriesDataset(X_train, y_train, config.SEQUENCE_LENGTH)
-    val_dataset = TimeSeriesDataset(X_val, y_val, config.SEQUENCE_LENGTH)
+    Args:
+        X_train, y_train: Training data
+        X_val, y_val: Validation data
+        model_type: 'gru' or 'lstm'
+        config: DeepLearningConfig object
+        class_weights: Optional class weights tensor
+        optimized_params: Optional dictionary with optimized hyperparameters from Optuna
+    """
+    
+    # Use optimized params if provided, otherwise use config defaults
+    sequence_length = optimized_params.get('sequence_length', config.SEQUENCE_LENGTH) if optimized_params else config.SEQUENCE_LENGTH
+    batch_size = optimized_params.get('batch_size', config.BATCH_SIZE) if optimized_params else config.BATCH_SIZE
+    learning_rate = optimized_params.get('learning_rate', config.LEARNING_RATE) if optimized_params else config.LEARNING_RATE
+    weight_decay = optimized_params.get('weight_decay', 0.0) if optimized_params else 0.0
+    
+    # Create datasets with optimized sequence length
+    train_dataset = TimeSeriesDataset(X_train, y_train, sequence_length)
+    val_dataset = TimeSeriesDataset(X_val, y_val, sequence_length)
     
     # Note: shuffle=False to preserve temporal order in time-series data
-    train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=False,
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False,
                               num_workers=4, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=config.BATCH_SIZE, shuffle=False,
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
                             num_workers=4, pin_memory=True)
     
-    # Create model
+    # Create model with optimized architecture params
     input_dim = X_train.shape[1]
-    model = create_model(model_type, input_dim, config)
+    model = create_model(model_type, input_dim, config, optimized_params)
     model = model.to(config.DEVICE)
     
     # Loss function - use reduction='none' for per-sample weighting
     criterion = nn.BCELoss(reduction='none')
     
-    optimizer = torch.optim.Adam(model.parameters(), lr=config.LEARNING_RATE)
+    # Optimizer selection based on optimized params
+    optimizer_type = optimized_params.get('optimizer', 'adamw') if optimized_params else 'adamw'
+    if optimizer_type == 'adamw':
+        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    else:
+        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', 
                                                             factor=0.5, patience=5)
     
@@ -517,7 +649,7 @@ def train_deep_learning_model(X_train: np.ndarray, y_train: np.ndarray,
             # Apply class weights if provided
             if class_weights is not None:
                 # Get the weights for this batch
-                start_idx = batch_idx * config.BATCH_SIZE
+                start_idx = batch_idx * batch_size
                 end_idx = min(start_idx + len(X_batch), len(train_dataset))
                 batch_weights = class_weights[start_idx:end_idx].to(config.DEVICE)
                 
@@ -575,10 +707,14 @@ def train_deep_learning_model(X_train: np.ndarray, y_train: np.ndarray,
 
 
 
-def predict_with_model(model, X: np.ndarray, config: DeepLearningConfig) -> np.ndarray:
+def predict_with_model(model, X: np.ndarray, config: DeepLearningConfig,
+                       sequence_length: int = None, batch_size: int = None) -> np.ndarray:
     """Make predictions with trained model"""
-    dataset = TimeSeriesDataset(X, np.zeros(len(X)), config.SEQUENCE_LENGTH)
-    loader = DataLoader(dataset, batch_size=config.BATCH_SIZE, shuffle=False)
+    seq_len = sequence_length if sequence_length else config.SEQUENCE_LENGTH
+    bs = batch_size if batch_size else config.BATCH_SIZE
+    
+    dataset = TimeSeriesDataset(X, np.zeros(len(X)), seq_len)
+    loader = DataLoader(dataset, batch_size=bs, shuffle=False)
     
     model.eval()
     predictions = []
@@ -598,8 +734,21 @@ def train_single_tower_event_models(X: pd.DataFrame, y: pd.Series,
                                     config: DeepLearningConfig,
                                     tower_name: str,
                                     event_name: str,
-                                    metadata: pd.DataFrame = None) -> Dict:
-    """Train deep learning models for ONE tower and ONE event"""
+                                    metadata: pd.DataFrame = None,
+                                    optimized_params: Dict[str, Dict] = None,
+                                    use_optuna_params: bool = True) -> Dict:
+    """Train deep learning models for ONE tower and ONE event with Optuna-optimized hyperparameters
+    
+    Args:
+        X: Feature dataframe
+        y: Target series
+        config: DeepLearningConfig object
+        tower_name: Name of the tower
+        event_name: Name of the event
+        metadata: Optional metadata dataframe
+        optimized_params: Dictionary mapping model_type -> optimized parameters
+        use_optuna_params: Whether to use Optuna-optimized hyperparameters
+    """
     
     tscv = TimeSeriesSplit(n_splits=config.N_SPLITS)
     
@@ -610,7 +759,8 @@ def train_single_tower_event_models(X: pd.DataFrame, y: pd.Series,
     results = {
         'tower': tower_name,
         'event': event_name,
-        'models': {}
+        'models': {},
+        'used_optuna_params': use_optuna_params
     }
     
     # Initialize results for each model type
@@ -655,16 +805,25 @@ def train_single_tower_event_models(X: pd.DataFrame, y: pd.Series,
         for model_type in config.MODELS_TO_TRAIN:
             print(f"[{model_type}]", end=' ')
             
+            # Get optimized params for this model type
+            model_params = optimized_params.get(model_type, {}) if optimized_params else {}
+            
             model, history = train_deep_learning_model(
                 X_train, y_train, X_val, y_val,
-                model_type, config, class_weights
+                model_type, config, class_weights,
+                optimized_params=model_params
             )
             
+            # Get sequence length for this model (from optimized params or config default)
+            seq_len = model_params.get('sequence_length', config.SEQUENCE_LENGTH)
+            batch_size = model_params.get('batch_size', config.BATCH_SIZE)
+            
             # Predict on validation set
-            y_pred_proba = predict_with_model(model, X_val, config)
+            y_pred_proba = predict_with_model(model, X_val, config, 
+                                              sequence_length=seq_len, batch_size=batch_size)
             
             # Need to adjust indices for sequence length
-            valid_indices = slice(config.SEQUENCE_LENGTH - 1, len(y_val))
+            valid_indices = slice(seq_len - 1, len(y_val))
             y_val_adjusted = y_val[valid_indices]
             
             # Optimal threshold
@@ -852,18 +1011,26 @@ def prepare_temporal_features(df: pd.DataFrame, config: DeepLearningConfig,
 
 # ==================== RUN EXPERIMENTS ====================
 def run_multi_event_experiments(filtered_dfs: Dict[str, pd.DataFrame], 
-                                config: DeepLearningConfig) -> Dict:
-    """Run experiments for all towers and all events"""
+                                config: DeepLearningConfig,
+                                use_optuna_params: bool = True) -> Dict:
+    """Run experiments for all towers and all events with Optuna-optimized hyperparameters
+    
+    Args:
+        filtered_dfs: Dictionary of tower dataframes
+        config: DeepLearningConfig object
+        use_optuna_params: Whether to use Optuna-optimized hyperparameters (default True)
+    """
     
     all_results = {}
     
     print("\n" + "="*80)
-    print("RUNNING MULTI-EVENT DEEP LEARNING EXPERIMENTS")
+    print("RUNNING MULTI-EVENT DEEP LEARNING EXPERIMENTS WITH OPTUNA-OPTIMIZED HYPERPARAMETERS")
     print("="*80)
     print(f"Device: {config.DEVICE}")
     print(f"Models: {', '.join(config.MODELS_TO_TRAIN)}")
-    print(f"Sequence Length: {config.SEQUENCE_LENGTH}")
-    print(f"Batch Size: {config.BATCH_SIZE}")
+    print(f"Using Optuna parameters: {use_optuna_params}")
+    print(f"Default Sequence Length: {config.SEQUENCE_LENGTH}")
+    print(f"Default Batch Size: {config.BATCH_SIZE}")
     print("="*80)
     
     for tower_name, tower_df in filtered_dfs.items():
@@ -898,10 +1065,20 @@ def run_multi_event_experiments(filtered_dfs: Dict[str, pd.DataFrame],
                 print(f"      ✓ Samples: {len(y):,} | Events: {y.sum():,} ({y.mean()*100:.2f}%)")
                 print(f"      ✓ Features: {len(feature_cols)}")
                 
+                # Get Optuna-optimized parameters for each model type
+                optimized_params = {}
+                if use_optuna_params:
+                    for model_type in config.MODELS_TO_TRAIN:
+                        params = get_optimized_params(tower_name, event_col, model_type, config)
+                        if params:
+                            optimized_params[model_type] = params
+                
                 metadata = tower_df.loc[X.index, ['timestamp']].copy() if 'timestamp' in tower_df.columns else None
                 
                 results = train_single_tower_event_models(
-                    X, y, config, tower_name, event_col, metadata
+                    X, y, config, tower_name, event_col, metadata,
+                    optimized_params=optimized_params,
+                    use_optuna_params=use_optuna_params
                 )
                 
                 all_results[tower_name][event_col] = {
@@ -1222,23 +1399,26 @@ def save_all_results(all_results: Dict, config: DeepLearningConfig):
 
 # ==================== MAIN EXECUTION ====================
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'  # ✅ Force only GPU 1 to be visible
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'  # ✅ Force only GPU 0 to be visible
 
 config = DeepLearningConfig()
 
 print("="*70)
-print("MULTI-EVENT TEMPORAL FORECASTING - DEEP LEARNING")
+print("MULTI-EVENT TEMPORAL FORECASTING - DEEP LEARNING (GRU & LSTM)")
 print("="*70)
 print(f"Device: {config.DEVICE}")
-print(f"Batch size: {config.BATCH_SIZE}")
+print(f"Default Batch size: {config.BATCH_SIZE}")
+print(f"Default Sequence Length: {config.SEQUENCE_LENGTH}")
 print("="*70)
 
 # Clear GPU memory before starting
 clear_gpu_memory()
 get_gpu_memory_info()
 
-# Run experiments
-all_results = run_multi_event_experiments(filtered_dfs, config)
+# ==================== RUN WITH OPTUNA-OPTIMIZED PARAMETERS ====================
+# Set use_optuna_params=True to use best hyperparameters from Optuna optimization
+# Set use_optuna_params=False to use default config parameters
+all_results = run_multi_event_experiments(filtered_dfs, config, use_optuna_params=True)
 
 
 # Save results

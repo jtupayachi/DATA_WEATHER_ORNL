@@ -135,6 +135,7 @@ filtered_dfs = filter_dfs_below_threshold(df, ranges, threshold=100)
 
 
 # ==================== MULTI-EVENT TEMPORAL FORECASTING - PER-TOWER EXPERIMENTS ====================
+import os
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import TimeSeriesSplit
@@ -155,323 +156,91 @@ import pickle
 import json
 from scipy import stats
 from pathlib import Path
+import glob
 
 warnings.filterwarnings('ignore')
 
 # ==================== OPTUNA OPTIMIZED HYPERPARAMETERS ====================
-# These are the best parameters found via Optuna hyperparameter optimization
+# Load best parameters dynamically from Optuna results folders
 
-OPTUNA_BEST_PARAMS_LIGHTGBM = {
-    "TOWA_event_E3_LowTemp_lt0": {
-        "lag_config": "long", "use_rolling": False, "rolling_windows": [4, 12, 24],
-        "num_leaves": 53, "max_depth": 12, "min_child_samples": 80,
-        "min_child_weight": 0.00012713994996000082, "reg_alpha": 1.2339710057337675e-08,
-        "reg_lambda": 2.158238656155923e-06, "min_split_gain": 0.7816403780465137,
-        "feature_fraction": 0.8801752175695182, "bagging_fraction": 0.7230323266998766,
-        "bagging_freq": 1, "learning_rate": 0.03304896581735003, "n_estimators": 500
-    },
-    "TOWA_event_E4_HighWind_Peak_gt25": {
-        "lag_config": "long", "use_rolling": False, "rolling_windows": [4, 12, 24],
-        "num_leaves": 17, "max_depth": 8, "min_child_samples": 98,
-        "min_child_weight": 0.00010917154336848762, "reg_alpha": 9.393963049181792,
-        "reg_lambda": 9.137714464154736e-05, "min_split_gain": 0.3476334304965827,
-        "feature_fraction": 0.6149672883734792, "bagging_fraction": 0.806965802588634,
-        "bagging_freq": 1, "learning_rate": 0.029089658997831124, "n_estimators": 1500
-    },
-    "TOWA_event_E5_LowWind_lt2": {
-        "lag_config": "long", "use_rolling": True, "rolling_windows": [4, 12, 24, 96],
-        "num_leaves": 16, "max_depth": 5, "min_child_samples": 56,
-        "min_child_weight": 0.00014371710066091466, "reg_alpha": 0.00015502542946453928,
-        "reg_lambda": 5.747312446963613e-07, "min_split_gain": 0.30217950683515593,
-        "feature_fraction": 0.7788718123238481, "bagging_fraction": 0.9419250342980192,
-        "bagging_freq": 1, "learning_rate": 0.07287922737821052, "n_estimators": 1000
-    },
-    "TOWB_event_E3_LowTemp_lt0": {
-        "lag_config": "long", "use_rolling": True, "rolling_windows": [4, 12, 24],
-        "num_leaves": 71, "max_depth": 12, "min_child_samples": 47,
-        "min_child_weight": 0.019765671286259803, "reg_alpha": 3.5966631078562266e-06,
-        "reg_lambda": 0.00016423648247812674, "min_split_gain": 0.8980545029083484,
-        "feature_fraction": 0.9020644139130922, "bagging_fraction": 0.6714409555116866,
-        "bagging_freq": 1, "learning_rate": 0.08908149241752986, "n_estimators": 1500
-    },
-    "TOWB_event_E4_HighWind_Peak_gt25": {
-        "lag_config": "long", "use_rolling": False, "rolling_windows": [4, 12, 24],
-        "num_leaves": 17, "max_depth": 8, "min_child_samples": 98,
-        "min_child_weight": 0.00010917154336848762, "reg_alpha": 9.393963049181792,
-        "reg_lambda": 9.137714464154736e-05, "min_split_gain": 0.3476334304965827,
-        "feature_fraction": 0.6149672883734792, "bagging_fraction": 0.806965802588634,
-        "bagging_freq": 1, "learning_rate": 0.029089658997831124, "n_estimators": 1500
-    },
-    "TOWB_event_E5_LowWind_lt2": {
-        "lag_config": "long", "use_rolling": True, "rolling_windows": [4, 12],
-        "num_leaves": 39, "max_depth": 9, "min_child_samples": 76,
-        "min_child_weight": 0.00030823550282250306, "reg_alpha": 0.0003268526967089423,
-        "reg_lambda": 0.011994461705626402, "min_split_gain": 0.699713004266552,
-        "feature_fraction": 0.8827570920081598, "bagging_fraction": 0.6052179901832873,
-        "bagging_freq": 1, "learning_rate": 0.020343809874919235, "n_estimators": 500
-    },
-    "TOWD_event_E3_LowTemp_lt0": {
-        "lag_config": "long", "use_rolling": False, "rolling_windows": [4, 12, 24],
-        "num_leaves": 100, "max_depth": 12, "min_child_samples": 68,
-        "min_child_weight": 0.02729262918276948, "reg_alpha": 1.4065747127981142e-05,
-        "reg_lambda": 3.4964486298334446e-06, "min_split_gain": 0.8456638883410553,
-        "feature_fraction": 0.7231620255823714, "bagging_fraction": 0.7507650981689699,
-        "bagging_freq": 3, "learning_rate": 0.023238160952885455, "n_estimators": 1500
-    },
-    "TOWD_event_E4_HighWind_Peak_gt25": {
-        "lag_config": "medium", "use_rolling": True, "rolling_windows": [4, 12],
-        "num_leaves": 45, "max_depth": 5, "min_child_samples": 98,
-        "min_child_weight": 0.0015110998901295227, "reg_alpha": 1.0676256433841829,
-        "reg_lambda": 0.004789030842100622, "min_split_gain": 0.7948113035416484,
-        "feature_fraction": 0.751318546552596, "bagging_fraction": 0.7884519423131795,
-        "bagging_freq": 5, "learning_rate": 0.010862195895119268, "n_estimators": 1000
-    },
-    "TOWD_event_E5_LowWind_lt2": {
-        "lag_config": "long", "use_rolling": True, "rolling_windows": [4, 12, 24],
-        "num_leaves": 79, "max_depth": 11, "min_child_samples": 64,
-        "min_child_weight": 0.01651717389595248, "reg_alpha": 0.006248337525391124,
-        "reg_lambda": 0.00020855660429009324, "min_split_gain": 0.6166543968846356,
-        "feature_fraction": 0.6811878915781364, "bagging_fraction": 0.663918942393017,
-        "bagging_freq": 1, "learning_rate": 0.0225600602135872, "n_estimators": 1500
-    },
-    "TOWF_event_E3_LowTemp_lt0": {
-        "lag_config": "long", "use_rolling": False, "rolling_windows": [4, 12],
-        "num_leaves": 32, "max_depth": 12, "min_child_samples": 49,
-        "min_child_weight": 0.0001594942391038061, "reg_alpha": 1.0509231142033618e-05,
-        "reg_lambda": 6.784728014110355, "min_split_gain": 0.6677092990343328,
-        "feature_fraction": 0.6232642602438514, "bagging_fraction": 0.5946071749461295,
-        "bagging_freq": 3, "learning_rate": 0.025844954605036514, "n_estimators": 500
-    },
-    "TOWF_event_E4_HighWind_Peak_gt25": {
-        "lag_config": "medium", "use_rolling": True, "rolling_windows": [4, 12],
-        "num_leaves": 48, "max_depth": 11, "min_child_samples": 85,
-        "min_child_weight": 0.0028226859807930628, "reg_alpha": 9.033793918737153,
-        "reg_lambda": 1.3398544494234465e-08, "min_split_gain": 0.1419924490134556,
-        "feature_fraction": 0.6482846708655243, "bagging_fraction": 0.6312308093206834,
-        "bagging_freq": 3, "learning_rate": 0.022157959351349992, "n_estimators": 1000
-    },
-    "TOWF_event_E5_LowWind_lt2": {
-        "lag_config": "medium", "use_rolling": True, "rolling_windows": [4, 12, 24],
-        "num_leaves": 110, "max_depth": 3, "min_child_samples": 28,
-        "min_child_weight": 0.012290700290731604, "reg_alpha": 7.222813762411962e-07,
-        "reg_lambda": 0.4644166333190447, "min_split_gain": 0.10978974909811123,
-        "feature_fraction": 0.9214510016994224, "bagging_fraction": 0.859501082431177,
-        "bagging_freq": 3, "learning_rate": 0.012048909168477518, "n_estimators": 1500
-    },
-    "TOWS_event_E3_LowTemp_lt0": {
-        "lag_config": "long", "use_rolling": False, "rolling_windows": [4, 12, 24],
-        "num_leaves": 115, "max_depth": 10, "min_child_samples": 89,
-        "min_child_weight": 0.0016464983402063073, "reg_alpha": 3.3012293294114516,
-        "reg_lambda": 6.5528835764101e-07, "min_split_gain": 0.23793095042589624,
-        "feature_fraction": 0.6833138079822769, "bagging_fraction": 0.8417291996432286,
-        "bagging_freq": 1, "learning_rate": 0.023583988583118772, "n_estimators": 1500
-    },
-    "TOWS_event_E4_HighWind_Peak_gt25": {
-        "lag_config": "long", "use_rolling": True, "rolling_windows": [4, 12],
-        "num_leaves": 40, "max_depth": 8, "min_child_samples": 85,
-        "min_child_weight": 0.012112792503087657, "reg_alpha": 0.0014062467264953553,
-        "reg_lambda": 0.0002526427119596501, "min_split_gain": 0.64198081705755,
-        "feature_fraction": 0.6890064213110824, "bagging_fraction": 0.6348326019535857,
-        "bagging_freq": 3, "learning_rate": 0.029440309726287254, "n_estimators": 300
-    },
-    "TOWS_event_E5_LowWind_lt2": {
-        "lag_config": "medium", "use_rolling": True, "rolling_windows": [4, 12, 24],
-        "num_leaves": 62, "max_depth": 4, "min_child_samples": 74,
-        "min_child_weight": 0.0023935779134259963, "reg_alpha": 6.973268820543438e-07,
-        "reg_lambda": 9.87554018612608e-06, "min_split_gain": 0.9641517611069783,
-        "feature_fraction": 0.9090893438994712, "bagging_fraction": 0.6671924812663248,
-        "bagging_freq": 5, "learning_rate": 0.041698493450253185, "n_estimators": 300
-    },
-    "TOWY_event_E3_LowTemp_lt0": {
-        "lag_config": "long", "use_rolling": False, "rolling_windows": [4, 12],
-        "num_leaves": 82, "max_depth": 11, "min_child_samples": 86,
-        "min_child_weight": 0.00010222110388239209, "reg_alpha": 8.293024214976948e-07,
-        "reg_lambda": 0.9710021475314176, "min_split_gain": 0.5734037667450473,
-        "feature_fraction": 0.637293817093315, "bagging_fraction": 0.5869117910141909,
-        "bagging_freq": 3, "learning_rate": 0.02117670382086423, "n_estimators": 1000
-    },
-    "TOWY_event_E4_HighWind_Peak_gt25": {
-        "lag_config": "medium", "use_rolling": True, "rolling_windows": [4, 12],
-        "num_leaves": 33, "max_depth": 12, "min_child_samples": 66,
-        "min_child_weight": 0.0012784452432239518, "reg_alpha": 0.05134941358329248,
-        "reg_lambda": 4.688365593919977e-06, "min_split_gain": 0.398686932739847,
-        "feature_fraction": 0.8170189599419502, "bagging_fraction": 0.7636988784769166,
-        "bagging_freq": 1, "learning_rate": 0.0173049898574773, "n_estimators": 1000
-    },
-    "TOWY_event_E5_LowWind_lt2": {
-        "lag_config": "long", "use_rolling": True, "rolling_windows": [4, 12, 24, 96],
-        "num_leaves": 119, "max_depth": 12, "min_child_samples": 71,
-        "min_child_weight": 0.03030129860669675, "reg_alpha": 7.944017741333646e-08,
-        "reg_lambda": 0.0005643920183008574, "min_split_gain": 0.9054508765202831,
-        "feature_fraction": 0.8209130773105879, "bagging_fraction": 0.6421395861873089,
-        "bagging_freq": 1, "learning_rate": 0.0230935000364064, "n_estimators": 1000
-    },
-}
+def find_latest_optuna_folder(model_type: str, base_path: str = ".") -> Optional[str]:
+    """
+    Find the most recent Optuna results folder for a given model type.
+    
+    Args:
+        model_type: 'lightgbm' or 'xgboost'
+        base_path: Base directory to search in
+        
+    Returns:
+        Path to the most recent folder, or None if not found
+    """
+    pattern = f"optuna_ml_results_{model_type}_*"
+    folders = glob.glob(os.path.join(base_path, pattern))
+    
+    if not folders:
+        print(f"⚠️ No Optuna results folder found for {model_type}")
+        return None
+    
+    # Sort by folder name (which includes timestamp) and get the latest
+    folders.sort(reverse=True)
+    return folders[0]
 
-OPTUNA_BEST_PARAMS_XGBOOST = {
-    "TOWA_event_E3_LowTemp_lt0": {
-        "lag_config": "long", "use_rolling": False, "rolling_windows": [4, 12],
-        "max_depth": 6, "min_child_weight": 9, "max_delta_step": 3,
-        "reg_alpha": 9.30699889481333, "reg_lambda": 0.03168807803783558,
-        "gamma": 0.33690648962871805, "subsample": 0.8495343928794895,
-        "colsample_bytree": 0.9796503742078398, "colsample_bylevel": 0.952645591563855,
-        "colsample_bynode": 0.9387214503258161, "learning_rate": 0.022947962003095564,
-        "n_estimators": 300
-    },
-    "TOWA_event_E4_HighWind_Peak_gt25": {
-        "lag_config": "long", "use_rolling": False, "rolling_windows": [4, 12, 24],
-        "max_depth": 6, "min_child_weight": 8, "max_delta_step": 5,
-        "reg_alpha": 0.00010915897159910164, "reg_lambda": 9.879192474391198,
-        "gamma": 0.4831114162411899, "subsample": 0.5568387922520726,
-        "colsample_bytree": 0.9242560090153095, "colsample_bylevel": 0.5701140880458975,
-        "colsample_bynode": 0.689658653803289, "learning_rate": 0.0316765366362346,
-        "n_estimators": 1500
-    },
-    "TOWA_event_E5_LowWind_lt2": {
-        "lag_config": "long", "use_rolling": True, "rolling_windows": [4, 12, 24, 96],
-        "max_depth": 8, "min_child_weight": 10, "max_delta_step": 6,
-        "reg_alpha": 0.00025782219919185463, "reg_lambda": 1.7544786390837053,
-        "gamma": 0.8971337506154611, "subsample": 0.8787702008149939,
-        "colsample_bytree": 0.9250070309462856, "colsample_bylevel": 0.7203101547833567,
-        "colsample_bynode": 0.9622184291897358, "learning_rate": 0.028622960477609944,
-        "n_estimators": 300
-    },
-    "TOWB_event_E3_LowTemp_lt0": {
-        "lag_config": "long", "use_rolling": True, "rolling_windows": [4, 12, 24, 96],
-        "max_depth": 9, "min_child_weight": 2, "max_delta_step": 5,
-        "reg_alpha": 3.346831166766384e-05, "reg_lambda": 3.5009583107741835,
-        "gamma": 0.37160990569926816, "subsample": 0.9349958625028222,
-        "colsample_bytree": 0.8490934864978873, "colsample_bylevel": 0.9019138453595092,
-        "colsample_bynode": 0.6139157657367047, "learning_rate": 0.0781691863262754,
-        "n_estimators": 500
-    },
-    "TOWB_event_E4_HighWind_Peak_gt25": {
-        "lag_config": "long", "use_rolling": True, "rolling_windows": [4, 12],
-        "max_depth": 4, "min_child_weight": 4, "max_delta_step": 1,
-        "reg_alpha": 0.3378826936869537, "reg_lambda": 5.5943737918513745e-06,
-        "gamma": 0.5710588786765588, "subsample": 0.5722426802493662,
-        "colsample_bytree": 0.7805704511465267, "colsample_bylevel": 0.8276970545180498,
-        "colsample_bynode": 0.7788798265736394, "learning_rate": 0.01160989896918804,
-        "n_estimators": 1000
-    },
-    "TOWB_event_E5_LowWind_lt2": {
-        "lag_config": "long", "use_rolling": True, "rolling_windows": [4, 12, 24, 96],
-        "max_depth": 7, "min_child_weight": 7, "max_delta_step": 9,
-        "reg_alpha": 0.0001288717637335481, "reg_lambda": 3.2172497233880866e-07,
-        "gamma": 0.1581410966425562, "subsample": 0.6719166886024251,
-        "colsample_bytree": 0.5772227330027191, "colsample_bylevel": 0.806385195719197,
-        "colsample_bynode": 0.7081557303643049, "learning_rate": 0.012013825359781299,
-        "n_estimators": 1000
-    },
-    "TOWD_event_E3_LowTemp_lt0": {
-        "lag_config": "long", "use_rolling": False, "rolling_windows": [4, 12, 24, 96],
-        "max_depth": 10, "min_child_weight": 10, "max_delta_step": 3,
-        "reg_alpha": 0.020323319922151327, "reg_lambda": 0.06667079850780944,
-        "gamma": 0.7270124884143551, "subsample": 0.8763707570669235,
-        "colsample_bytree": 0.6624789650144622, "colsample_bylevel": 0.7477419218611648,
-        "colsample_bynode": 0.6284277879661798, "learning_rate": 0.04598405691003026,
-        "n_estimators": 1500
-    },
-    "TOWD_event_E4_HighWind_Peak_gt25": {
-        "lag_config": "long", "use_rolling": False, "rolling_windows": [4, 12],
-        "max_depth": 3, "min_child_weight": 6, "max_delta_step": 9,
-        "reg_alpha": 5.895220099386707e-07, "reg_lambda": 0.0004379795176728659,
-        "gamma": 0.5508909272677962, "subsample": 0.8282404698398591,
-        "colsample_bytree": 0.7294706714836672, "colsample_bylevel": 0.8264339349794061,
-        "colsample_bynode": 0.7874885120131722, "learning_rate": 0.10593695992511787,
-        "n_estimators": 300
-    },
-    "TOWD_event_E5_LowWind_lt2": {
-        "lag_config": "long", "use_rolling": True, "rolling_windows": [4, 12, 24],
-        "max_depth": 7, "min_child_weight": 8, "max_delta_step": 9,
-        "reg_alpha": 5.3085280007953095, "reg_lambda": 0.3432172336017638,
-        "gamma": 0.5598137910797276, "subsample": 0.5690618139365828,
-        "colsample_bytree": 0.9506574750626066, "colsample_bylevel": 0.5365179275599425,
-        "colsample_bynode": 0.9665517643298088, "learning_rate": 0.01682452115127194,
-        "n_estimators": 500
-    },
-    "TOWF_event_E3_LowTemp_lt0": {
-        "lag_config": "long", "use_rolling": True, "rolling_windows": [4, 12, 24],
-        "max_depth": 4, "min_child_weight": 9, "max_delta_step": 2,
-        "reg_alpha": 3.109262957379717e-05, "reg_lambda": 0.38661490334898735,
-        "gamma": 0.7091814069673976, "subsample": 0.7223391107284589,
-        "colsample_bytree": 0.9846520931111055, "colsample_bylevel": 0.9923449785168181,
-        "colsample_bynode": 0.6202663672664155, "learning_rate": 0.027983455313691088,
-        "n_estimators": 500
-    },
-    "TOWF_event_E4_HighWind_Peak_gt25": {
-        "lag_config": "long", "use_rolling": True, "rolling_windows": [4, 12, 24],
-        "max_depth": 4, "min_child_weight": 4, "max_delta_step": 8,
-        "reg_alpha": 1.8161505599610613e-07, "reg_lambda": 0.027739216811216112,
-        "gamma": 0.6412021754939815, "subsample": 0.6719585733290876,
-        "colsample_bytree": 0.8732898861201894, "colsample_bylevel": 0.5507905295019475,
-        "colsample_bynode": 0.5023096484200139, "learning_rate": 0.10721543134876416,
-        "n_estimators": 500
-    },
-    "TOWF_event_E5_LowWind_lt2": {
-        "lag_config": "medium", "use_rolling": True, "rolling_windows": [4, 12, 24, 96],
-        "max_depth": 3, "min_child_weight": 8, "max_delta_step": 2,
-        "reg_alpha": 5.118357453017621, "reg_lambda": 0.46188575056521397,
-        "gamma": 0.34955418015015594, "subsample": 0.8831604636540766,
-        "colsample_bytree": 0.5741598264699668, "colsample_bylevel": 0.6896972836842576,
-        "colsample_bynode": 0.8451300283977405, "learning_rate": 0.044786292398761515,
-        "n_estimators": 1000
-    },
-    "TOWS_event_E3_LowTemp_lt0": {
-        "lag_config": "long", "use_rolling": False, "rolling_windows": [4, 12, 24, 96],
-        "max_depth": 6, "min_child_weight": 9, "max_delta_step": 5,
-        "reg_alpha": 0.00022998232401004259, "reg_lambda": 0.09951692930278297,
-        "gamma": 0.5538326471886973, "subsample": 0.6521263775844361,
-        "colsample_bytree": 0.6640253143746593, "colsample_bylevel": 0.6094373780012482,
-        "colsample_bynode": 0.8936687535412018, "learning_rate": 0.028589832038300747,
-        "n_estimators": 1500
-    },
-    "TOWS_event_E4_HighWind_Peak_gt25": {
-        "lag_config": "long", "use_rolling": True, "rolling_windows": [4, 12, 24],
-        "max_depth": 5, "min_child_weight": 10, "max_delta_step": 8,
-        "reg_alpha": 0.2970617304208863, "reg_lambda": 6.8394780401504685,
-        "gamma": 0.49219377966790084, "subsample": 0.7790052556837427,
-        "colsample_bytree": 0.7924343878858132, "colsample_bylevel": 0.8964973997679856,
-        "colsample_bynode": 0.9204871391696174, "learning_rate": 0.020701471669981177,
-        "n_estimators": 1500
-    },
-    "TOWS_event_E5_LowWind_lt2": {
-        "lag_config": "medium", "use_rolling": True, "rolling_windows": [4, 12, 24],
-        "max_depth": 5, "min_child_weight": 7, "max_delta_step": 4,
-        "reg_alpha": 1.0850702014468193e-08, "reg_lambda": 1.21601682577181e-05,
-        "gamma": 0.841762290683486, "subsample": 0.7697933139465782,
-        "colsample_bytree": 0.5526519766774814, "colsample_bylevel": 0.5699249679015855,
-        "colsample_bynode": 0.7090393930326032, "learning_rate": 0.03654715396651602,
-        "n_estimators": 300
-    },
-    "TOWY_event_E3_LowTemp_lt0": {
-        "lag_config": "long", "use_rolling": False, "rolling_windows": [4, 12, 24, 96],
-        "max_depth": 12, "min_child_weight": 8, "max_delta_step": 8,
-        "reg_alpha": 8.698388905193722e-05, "reg_lambda": 0.06543885327670278,
-        "gamma": 0.6825442092235581, "subsample": 0.6907670542494437,
-        "colsample_bytree": 0.8152169317397463, "colsample_bylevel": 0.7985223375197199,
-        "colsample_bynode": 0.5244883437679271, "learning_rate": 0.10768702878352236,
-        "n_estimators": 1500
-    },
-    "TOWY_event_E4_HighWind_Peak_gt25": {
-        "lag_config": "long", "use_rolling": False, "rolling_windows": [4, 12, 24, 96],
-        "max_depth": 3, "min_child_weight": 1, "max_delta_step": 1,
-        "reg_alpha": 6.020697003849299e-08, "reg_lambda": 0.004411702132961369,
-        "gamma": 0.07493655662370946, "subsample": 0.6220349299758334,
-        "colsample_bytree": 0.5745983312967512, "colsample_bylevel": 0.8908028342600822,
-        "colsample_bynode": 0.6308002574634509, "learning_rate": 0.013141000372967598,
-        "n_estimators": 1500
-    },
-    "TOWY_event_E5_LowWind_lt2": {
-        "lag_config": "long", "use_rolling": True, "rolling_windows": [4, 12, 24],
-        "max_depth": 5, "min_child_weight": 7, "max_delta_step": 7,
-        "reg_alpha": 0.0103645376921219, "reg_lambda": 9.419191235399888,
-        "gamma": 0.8203051151790669, "subsample": 0.7665046506171626,
-        "colsample_bytree": 0.8717229170894726, "colsample_bylevel": 0.7298356408716007,
-        "colsample_bynode": 0.9898232498406144, "learning_rate": 0.03049893761683439,
-        "n_estimators": 500
-    },
-}
+
+def load_optuna_best_params(model_type: str, base_path: str = ".") -> Dict:
+    """
+    Load best parameters from the Optuna results folder.
+    
+    Args:
+        model_type: 'lightgbm' or 'xgboost'
+        base_path: Base directory to search in
+        
+    Returns:
+        Dictionary with best parameters per tower-event combination
+    """
+    folder = find_latest_optuna_folder(model_type, base_path)
+    
+    if folder is None:
+        return {}
+    
+    best_params_file = os.path.join(folder, "best_params.json")
+    
+    if not os.path.exists(best_params_file):
+        print(f"⚠️ best_params.json not found in {folder}")
+        return {}
+    
+    with open(best_params_file, 'r') as f:
+        raw_params = json.load(f)
+    
+    # Transform the params structure to match expected format
+    # The JSON has nested structure: {key: {params: {...}, mcc: ..., metrics: {...}}}
+    # We need to extract just the params and convert rolling_windows from string to list
+    transformed_params = {}
+    
+    for key, data in raw_params.items():
+        if 'params' in data:
+            params = data['params'].copy()
+            
+            # Convert rolling_windows from string "[4, 12, 24]" to list [4, 12, 24]
+            if 'rolling_windows' in params and isinstance(params['rolling_windows'], str):
+                try:
+                    params['rolling_windows'] = json.loads(params['rolling_windows'])
+                except json.JSONDecodeError:
+                    # Fallback: try eval (for simple lists)
+                    params['rolling_windows'] = eval(params['rolling_windows'])
+            
+            transformed_params[key] = params
+        else:
+            # If structure is flat, use as-is
+            transformed_params[key] = data
+    
+    print(f"✅ Loaded {len(transformed_params)} parameter sets from {folder}")
+    return transformed_params
+
+
+# Load parameters at module initialization
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__)) if '__file__' in dir() else "."
+OPTUNA_BEST_PARAMS_LIGHTGBM = load_optuna_best_params('lightgbm', _SCRIPT_DIR)
+OPTUNA_BEST_PARAMS_XGBOOST = load_optuna_best_params('xgboost', _SCRIPT_DIR)
 
 
 def get_optimized_params(tower_name: str, event_name: str, model_type: str, config) -> Tuple[Dict, str, bool, List[int]]:

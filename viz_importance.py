@@ -5,17 +5,55 @@ Feature Importance Visualization Tool
 Visualizes feature importance across towers, events, and variables
 from ML experiment results.
 
+Includes geographic analysis with tower metadata loaded from JSON file.
+All tower variables are considered: elevation, height, slope, canopy, etc.
+
 Usage:
-    python viz_importance.py <results_folder_path>
+    python viz_importance.py <results_folder_path> [tower_metadata.json]
     
-Example:
+Examples:
     python viz_importance.py BESTML_multi_event_results_20251208_155338
+    python viz_importance.py BESTML_results tower_metadata_generated.json
+
+Tower Metadata JSON Format:
+    The script looks for 'tower_metadata_generated.json' in:
+    1. Provided path (2nd argument)
+    2. Results folder
+    3. Parent directory of results folder
+    4. Current working directory
+    5. Script directory
+    
+    JSON structure:
+    {
+        "tower_coordinates": {
+            "TOWA": {
+                "lat": 35.92004,
+                "lon": -84.305079,
+                "elevation_m": 260,
+                "elevation_msl_m": 263,
+                "height_m": 33,
+                "name": "ORNL Tower A",
+                "terrain_type": "Valley Floor",
+                "slope_deg": 0.0,
+                ...
+            },
+            ...
+        },
+        "region_info": {
+            "name": "Oak Ridge Reservation",
+            "state": "Tennessee, USA",
+            "center_lat": 35.928252,
+            "center_lon": -84.317857,
+            ...
+        }
+    }
 """
 
 import os
 import sys
 import glob
 import re
+import json
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -35,89 +73,82 @@ sns.set_palette("husl")
 # =============================================================================
 # TOWER GEOGRAPHIC COORDINATES AND TERRAIN FEATURES (ORNL Weather Towers)
 # =============================================================================
-# Placeholder coordinates for each tower - UPDATE WITH ACTUAL VALUES
-# Additional geographic/terrain features for analysis
-TOWER_COORDINATES = {
-    'TOWA': {
-        'lat': 35.9312, 'lon': -84.3108, 'elevation_m': 280,
-        'name': 'Tower A - Main Campus',
-        'terrain_type': 'Valley Floor',
-        'slope_deg': 2.5,           # Terrain slope in degrees
-        'aspect_deg': 180,          # Direction slope faces (0=N, 90=E, 180=S, 270=W)
-        'canopy_cover_pct': 15,     # Vegetation canopy coverage
-        'dist_to_ridge_m': 450,     # Distance to nearest ridge
-        'soil_type': 'Clay Loam',
-        'land_use': 'Research Facility',
-    },
-    'TOWB': {
-        'lat': 35.9285, 'lon': -84.3045, 'elevation_m': 295,
-        'name': 'Tower B - East Ridge',
-        'terrain_type': 'Ridge Slope',
-        'slope_deg': 8.0,
-        'aspect_deg': 270,          # West-facing
-        'canopy_cover_pct': 45,
-        'dist_to_ridge_m': 120,
-        'soil_type': 'Sandy Loam',
-        'land_use': 'Mixed Forest',
-    },
-    'TOWD': {
-        'lat': 35.9350, 'lon': -84.3200, 'elevation_m': 310,
-        'name': 'Tower D - West Valley',
-        'terrain_type': 'Valley Slope',
-        'slope_deg': 5.5,
-        'aspect_deg': 90,           # East-facing
-        'canopy_cover_pct': 30,
-        'dist_to_ridge_m': 280,
-        'soil_type': 'Silt Loam',
-        'land_use': 'Grassland',
-    },
-    'TOWF': {
-        'lat': 35.9220, 'lon': -84.3150, 'elevation_m': 265,
-        'name': 'Tower F - South Field',
-        'terrain_type': 'Valley Floor',
-        'slope_deg': 1.5,
-        'aspect_deg': 0,            # Flat/North
-        'canopy_cover_pct': 5,
-        'dist_to_ridge_m': 600,
-        'soil_type': 'Clay',
-        'land_use': 'Open Field',
-    },
-    'TOWS': {
-        'lat': 35.9380, 'lon': -84.2980, 'elevation_m': 340,
-        'name': 'Tower S - North Summit',
-        'terrain_type': 'Ridge Top',
-        'slope_deg': 3.0,
-        'aspect_deg': 45,           # NE-facing
-        'canopy_cover_pct': 60,
-        'dist_to_ridge_m': 0,       # On the ridge
-        'soil_type': 'Rocky Loam',
-        'land_use': 'Deciduous Forest',
-    },
-    'TOWY': {
-        'lat': 35.9255, 'lon': -84.3250, 'elevation_m': 275,
-        'name': 'Tower Y - Southwest',
-        'terrain_type': 'Valley Slope',
-        'slope_deg': 6.0,
-        'aspect_deg': 135,          # SE-facing
-        'canopy_cover_pct': 25,
-        'dist_to_ridge_m': 380,
-        'soil_type': 'Loam',
-        'land_use': 'Shrubland',
-    },
-}
+# Tower metadata loaded from JSON file
 
-# Geographic region info
-REGION_INFO = {
-    'name': 'Oak Ridge National Laboratory (ORNL)',
-    'state': 'Tennessee, USA',
-    'center_lat': 35.931,
-    'center_lon': -84.310,
-    'terrain': 'Ridge and Valley Province, Appalachian Region',
-    'climate': 'Humid subtropical (Köppen: Cfa)',
-    'avg_annual_temp_c': 14.4,
-    'avg_annual_precip_mm': 1370,
-    'prevailing_wind': 'Southwest',
-}
+TOWER_COORDINATES = {}
+REGION_INFO = {}
+
+# Default JSON metadata file name
+DEFAULT_METADATA_FILE = "tower_metadata_generated.json"
+
+
+def load_tower_metadata(json_path: str = None, folder_path: str = None) -> tuple:
+    """
+    Load tower coordinates and region info from JSON file.
+    
+    Args:
+        json_path: Direct path to JSON file (optional)
+        folder_path: Folder path where to look for default JSON file (optional)
+    
+    Returns:
+        Tuple of (tower_coordinates dict, region_info dict)
+    """
+    global TOWER_COORDINATES, REGION_INFO
+    
+    # Try to find JSON file
+    search_paths = []
+    
+    if json_path and os.path.isfile(json_path):
+        search_paths.append(json_path)
+    
+    if folder_path:
+        # Check in the results folder
+        search_paths.append(os.path.join(folder_path, DEFAULT_METADATA_FILE))
+        # Check in parent directory
+        search_paths.append(os.path.join(os.path.dirname(folder_path), DEFAULT_METADATA_FILE))
+    
+    # Check in current working directory
+    search_paths.append(os.path.join(os.getcwd(), DEFAULT_METADATA_FILE))
+    
+    # Check in script directory
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    search_paths.append(os.path.join(script_dir, DEFAULT_METADATA_FILE))
+    
+    # Find first existing file
+    json_file = None
+    for path in search_paths:
+        if os.path.isfile(path):
+            json_file = path
+            break
+    
+    if json_file is None:
+        print(f"WARNING: Tower metadata JSON file not found. Searched in:")
+        for path in search_paths:
+            print(f"  - {path}")
+        print("Geographic visualizations will be limited.")
+        return {}, {}
+    
+    print(f"Loading tower metadata from: {json_file}")
+    
+    try:
+        with open(json_file, 'r') as f:
+            metadata = json.load(f)
+        
+        TOWER_COORDINATES = metadata.get('tower_coordinates', {})
+        REGION_INFO = metadata.get('region_info', {})
+        
+        print(f"  Loaded {len(TOWER_COORDINATES)} towers: {', '.join(TOWER_COORDINATES.keys())}")
+        print(f"  Region: {REGION_INFO.get('name', 'Unknown')}")
+        
+        return TOWER_COORDINATES, REGION_INFO
+    
+    except json.JSONDecodeError as e:
+        print(f"ERROR: Failed to parse JSON file: {e}")
+        return {}, {}
+    except Exception as e:
+        print(f"ERROR: Failed to load metadata: {e}")
+        return {}, {}
+
 
 
 def load_importance_files(folder_path: str) -> dict:
@@ -478,6 +509,7 @@ def plot_grouped_bars_per_event(df: pd.DataFrame, event: str, top_n: int = 10, s
 def get_tower_geo_dataframe(df: pd.DataFrame, event: str, top_n: int = 5) -> pd.DataFrame:
     """
     Create a dataframe with tower geographic features and top N feature importance.
+    Includes all variables: height_m, elevation_msl_m, elevation_m, etc.
     """
     towers = sorted(df['tower'].unique())
     subset = df[df['event'] == event].copy()
@@ -496,29 +528,38 @@ def get_tower_geo_dataframe(df: pd.DataFrame, event: str, top_n: int = 5) -> pd.
         top_feature_1 = top_features.iloc[0]['feature'] if len(top_features) > 0 else 'N/A'
         top_feature_1_imp = top_features.iloc[0]['importance_pct'] if len(top_features) > 0 else 0
         
-        # Calculate distance from center
-        lat_diff = coords['lat'] - REGION_INFO['center_lat']
-        lon_diff = coords['lon'] - REGION_INFO['center_lon']
-        dist_from_center_km = np.sqrt((lat_diff * 111)**2 + (lon_diff * 111 * np.cos(np.radians(coords['lat'])))**2)
+        # Calculate distance from center (handle missing REGION_INFO)
+        if REGION_INFO and 'center_lat' in REGION_INFO and 'center_lon' in REGION_INFO:
+            lat_diff = coords['lat'] - REGION_INFO['center_lat']
+            lon_diff = coords['lon'] - REGION_INFO['center_lon']
+            dist_from_center_km = np.sqrt((lat_diff * 111)**2 + (lon_diff * 111 * np.cos(np.radians(coords['lat'])))**2)
+        else:
+            dist_from_center_km = 0
         
-        tower_data.append({
+        # Get all tower variables including height and MSL elevation
+        tower_entry = {
             'tower': tower,
-            'name': coords['name'],
-            'lat': coords['lat'],
-            'lon': coords['lon'],
-            'elevation_m': coords['elevation_m'],
-            'terrain_type': coords['terrain_type'],
-            'slope_deg': coords['slope_deg'],
-            'aspect_deg': coords['aspect_deg'],
-            'canopy_cover_pct': coords['canopy_cover_pct'],
-            'dist_to_ridge_m': coords['dist_to_ridge_m'],
+            'name': coords.get('name', tower),
+            'lat': coords.get('lat', 0),
+            'lon': coords.get('lon', 0),
+            'elevation_m': coords.get('elevation_m', 0),
+            'elevation_msl_m': coords.get('elevation_msl_m', coords.get('elevation_m', 0)),  # MSL elevation
+            'height_m': coords.get('height_m', 0),  # Tower height
+            'total_height_m': coords.get('elevation_m', 0) + coords.get('height_m', 0),  # Total height (ground + tower)
+            'terrain_type': coords.get('terrain_type', 'Unknown'),
+            'slope_deg': coords.get('slope_deg', 0),
+            'aspect_deg': coords.get('aspect_deg', 0),
+            'canopy_cover_pct': coords.get('canopy_cover_pct', 0),
+            'dist_to_ridge_m': coords.get('dist_to_ridge_m', 0),
             'dist_from_center_km': dist_from_center_km,
-            'soil_type': coords['soil_type'],
-            'land_use': coords['land_use'],
+            'soil_type': coords.get('soil_type', 'Unknown'),
+            'land_use': coords.get('land_use', 'Unknown'),
+            'color': coords.get('color', '#333333'),  # Tower color from JSON
             'top5_importance': top_importance_sum,
             'top1_feature': top_feature_1,
             'top1_importance': top_feature_1_imp,
-        })
+        }
+        tower_data.append(tower_entry)
     
     return pd.DataFrame(tower_data)
 
@@ -527,7 +568,8 @@ def plot_geographic_features_vs_importance(df: pd.DataFrame, output_folder: str 
     """
     Create comprehensive geographic analysis plots - ONE IMAGE PER EVENT.
     Shows how geographic/terrain features relate to top 5 feature importance.
-    Generates 3 images (one per target variable/event).
+    Generates images (one per target variable/event).
+    Includes tower height and MSL elevation analysis.
     """
     events = sorted(df['event'].unique())
     
@@ -541,172 +583,167 @@ def plot_geographic_features_vs_importance(df: pd.DataFrame, output_folder: str 
             print(f"No data for event: {event}")
             continue
         
-        # Create figure with 3x2 subplots
-        fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+        # Create figure with 3x3 subplots to include tower height variables
+        fig, axes = plt.subplots(3, 3, figsize=(20, 18))
+        region_name = REGION_INFO.get("name", "Unknown Region") if REGION_INFO else "Unknown Region"
+        region_state = REGION_INFO.get("state", "") if REGION_INFO else ""
         fig.suptitle(f'Geographic Features vs Feature Importance\nTarget: {event_display}\n'
-                     f'{REGION_INFO["name"]}, {REGION_INFO["state"]}',
+                     f'{region_name}, {region_state}',
                      fontsize=16, fontweight='bold', y=1.02)
         
-        # Color palette for towers
-        tower_colors = dict(zip(geo_df['tower'], plt.cm.Set2(np.linspace(0, 1, len(geo_df)))))
-        
-        # =====================================================================
-        # Plot 1: Elevation vs Top 5 Importance
-        # =====================================================================
-        ax1 = axes[0, 0]
+        # Use tower colors from JSON if available, otherwise use colormap
+        tower_colors = {}
         for _, row in geo_df.iterrows():
-            ax1.scatter(row['elevation_m'], row['top5_importance'], 
-                       s=200, c=[tower_colors[row['tower']]], 
-                       edgecolors='black', linewidth=1.5, zorder=3)
-            ax1.annotate(row['tower'], (row['elevation_m'], row['top5_importance']),
-                        xytext=(5, 5), textcoords='offset points', fontsize=10, fontweight='bold')
+            if row.get('color'):
+                tower_colors[row['tower']] = row['color']
+            else:
+                tower_colors[row['tower']] = plt.cm.Set2(list(geo_df['tower']).index(row['tower']) / len(geo_df))
         
-        # Add trend line
-        z = np.polyfit(geo_df['elevation_m'], geo_df['top5_importance'], 1)
-        p = np.poly1d(z)
-        x_line = np.linspace(geo_df['elevation_m'].min()-10, geo_df['elevation_m'].max()+10, 100)
-        ax1.plot(x_line, p(x_line), 'r--', alpha=0.7, linewidth=2, label='Trend')
-        
-        # Correlation
-        corr, pval = spearmanr(geo_df['elevation_m'], geo_df['top5_importance'])
-        ax1.text(0.05, 0.95, f'r={corr:.3f}\np={pval:.3f}', transform=ax1.transAxes,
-                fontsize=10, verticalalignment='top', 
-                bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-        
-        ax1.set_xlabel('Elevation (m)', fontsize=11)
-        ax1.set_ylabel('Top 5 Features Importance (%)', fontsize=11)
-        ax1.set_title('Elevation vs Importance', fontsize=12, fontweight='bold')
-        ax1.grid(True, alpha=0.3)
-        
-        # =====================================================================
-        # Plot 2: Slope vs Top 5 Importance
-        # =====================================================================
-        ax2 = axes[0, 1]
-        for _, row in geo_df.iterrows():
-            ax2.scatter(row['slope_deg'], row['top5_importance'],
-                       s=200, c=[tower_colors[row['tower']]],
-                       edgecolors='black', linewidth=1.5, zorder=3)
-            ax2.annotate(row['tower'], (row['slope_deg'], row['top5_importance']),
-                        xytext=(5, 5), textcoords='offset points', fontsize=10, fontweight='bold')
-        
-        corr, pval = spearmanr(geo_df['slope_deg'], geo_df['top5_importance'])
-        ax2.text(0.05, 0.95, f'r={corr:.3f}\np={pval:.3f}', transform=ax2.transAxes,
-                fontsize=10, verticalalignment='top',
-                bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-        
-        ax2.set_xlabel('Terrain Slope (degrees)', fontsize=11)
-        ax2.set_ylabel('Top 5 Features Importance (%)', fontsize=11)
-        ax2.set_title('Slope vs Importance', fontsize=12, fontweight='bold')
-        ax2.grid(True, alpha=0.3)
+        # Helper function to plot scatter with trend line
+        def plot_scatter_with_trend(ax, x_col, y_col, xlabel, title):
+            for _, row in geo_df.iterrows():
+                ax.scatter(row[x_col], row[y_col], 
+                          s=200, c=[tower_colors[row['tower']]], 
+                          edgecolors='black', linewidth=1.5, zorder=3)
+                ax.annotate(row['tower'], (row[x_col], row[y_col]),
+                           xytext=(5, 5), textcoords='offset points', fontsize=10, fontweight='bold')
+            
+            # Add trend line
+            if len(geo_df) >= 2:
+                z = np.polyfit(geo_df[x_col], geo_df[y_col], 1)
+                p = np.poly1d(z)
+                x_line = np.linspace(geo_df[x_col].min() - (geo_df[x_col].max() - geo_df[x_col].min()) * 0.1, 
+                                    geo_df[x_col].max() + (geo_df[x_col].max() - geo_df[x_col].min()) * 0.1, 100)
+                ax.plot(x_line, p(x_line), 'r--', alpha=0.7, linewidth=2, label='Trend')
+                
+                # Correlation
+                corr, pval = spearmanr(geo_df[x_col], geo_df[y_col])
+                ax.text(0.05, 0.95, f'r={corr:.3f}\np={pval:.3f}', transform=ax.transAxes,
+                       fontsize=10, verticalalignment='top', 
+                       bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+            
+            ax.set_xlabel(xlabel, fontsize=11)
+            ax.set_ylabel('Top 5 Features Importance (%)', fontsize=11)
+            ax.set_title(title, fontsize=12, fontweight='bold')
+            ax.grid(True, alpha=0.3)
         
         # =====================================================================
-        # Plot 3: Canopy Cover vs Top 5 Importance
+        # Plot 1: Ground Elevation vs Top 5 Importance
         # =====================================================================
-        ax3 = axes[0, 2]
-        for _, row in geo_df.iterrows():
-            ax3.scatter(row['canopy_cover_pct'], row['top5_importance'],
-                       s=200, c=[tower_colors[row['tower']]],
-                       edgecolors='black', linewidth=1.5, zorder=3)
-            ax3.annotate(row['tower'], (row['canopy_cover_pct'], row['top5_importance']),
-                        xytext=(5, 5), textcoords='offset points', fontsize=10, fontweight='bold')
-        
-        corr, pval = spearmanr(geo_df['canopy_cover_pct'], geo_df['top5_importance'])
-        ax3.text(0.05, 0.95, f'r={corr:.3f}\np={pval:.3f}', transform=ax3.transAxes,
-                fontsize=10, verticalalignment='top',
-                bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-        
-        ax3.set_xlabel('Canopy Cover (%)', fontsize=11)
-        ax3.set_ylabel('Top 5 Features Importance (%)', fontsize=11)
-        ax3.set_title('Vegetation Cover vs Importance', fontsize=12, fontweight='bold')
-        ax3.grid(True, alpha=0.3)
+        plot_scatter_with_trend(axes[0, 0], 'elevation_m', 'top5_importance', 
+                               'Ground Elevation (m)', 'Ground Elevation vs Importance')
         
         # =====================================================================
-        # Plot 4: Distance to Ridge vs Top 5 Importance
+        # Plot 2: Tower Height vs Top 5 Importance (NEW)
         # =====================================================================
-        ax4 = axes[1, 0]
-        for _, row in geo_df.iterrows():
-            ax4.scatter(row['dist_to_ridge_m'], row['top5_importance'],
-                       s=200, c=[tower_colors[row['tower']]],
-                       edgecolors='black', linewidth=1.5, zorder=3)
-            ax4.annotate(row['tower'], (row['dist_to_ridge_m'], row['top5_importance']),
-                        xytext=(5, 5), textcoords='offset points', fontsize=10, fontweight='bold')
-        
-        corr, pval = spearmanr(geo_df['dist_to_ridge_m'], geo_df['top5_importance'])
-        ax4.text(0.05, 0.95, f'r={corr:.3f}\np={pval:.3f}', transform=ax4.transAxes,
-                fontsize=10, verticalalignment='top',
-                bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-        
-        ax4.set_xlabel('Distance to Ridge (m)', fontsize=11)
-        ax4.set_ylabel('Top 5 Features Importance (%)', fontsize=11)
-        ax4.set_title('Ridge Proximity vs Importance', fontsize=12, fontweight='bold')
-        ax4.grid(True, alpha=0.3)
+        plot_scatter_with_trend(axes[0, 1], 'height_m', 'top5_importance',
+                               'Tower Height (m)', 'Tower Height vs Importance')
         
         # =====================================================================
-        # Plot 5: Terrain Type (categorical) vs Top 5 Importance - Box/Bar
+        # Plot 3: Total Height (ground + tower) vs Top 5 Importance (NEW)
         # =====================================================================
-        ax5 = axes[1, 1]
+        plot_scatter_with_trend(axes[0, 2], 'total_height_m', 'top5_importance',
+                               'Total Height (Ground + Tower) (m)', 'Total Height vs Importance')
+        
+        # =====================================================================
+        # Plot 4: Slope vs Top 5 Importance
+        # =====================================================================
+        plot_scatter_with_trend(axes[1, 0], 'slope_deg', 'top5_importance',
+                               'Terrain Slope (degrees)', 'Slope vs Importance')
+        
+        # =====================================================================
+        # Plot 5: Canopy Cover vs Top 5 Importance
+        # =====================================================================
+        plot_scatter_with_trend(axes[1, 1], 'canopy_cover_pct', 'top5_importance',
+                               'Canopy Cover (%)', 'Vegetation Cover vs Importance')
+        
+        # =====================================================================
+        # Plot 6: Distance to Ridge vs Top 5 Importance
+        # =====================================================================
+        plot_scatter_with_trend(axes[1, 2], 'dist_to_ridge_m', 'top5_importance',
+                               'Distance to Ridge (m)', 'Ridge Proximity vs Importance')
+        
+        # =====================================================================
+        # Plot 7: Terrain Type (categorical) vs Top 5 Importance - Box/Bar
+        # =====================================================================
+        ax7 = axes[2, 0]
         terrain_order = ['Valley Floor', 'Valley Slope', 'Ridge Slope', 'Ridge Top']
         terrain_data = geo_df.groupby('terrain_type')['top5_importance'].mean().reindex(terrain_order).dropna()
         
-        bars = ax5.bar(range(len(terrain_data)), terrain_data.values, 
-                      color=plt.cm.terrain(np.linspace(0.2, 0.8, len(terrain_data))),
-                      edgecolor='black', linewidth=1.5)
-        ax5.set_xticks(range(len(terrain_data)))
-        ax5.set_xticklabels(terrain_data.index, rotation=30, ha='right', fontsize=10)
+        if len(terrain_data) > 0:
+            bars = ax7.bar(range(len(terrain_data)), terrain_data.values, 
+                          color=plt.cm.terrain(np.linspace(0.2, 0.8, len(terrain_data))),
+                          edgecolor='black', linewidth=1.5)
+            ax7.set_xticks(range(len(terrain_data)))
+            ax7.set_xticklabels(terrain_data.index, rotation=30, ha='right', fontsize=10)
+            
+            # Add tower labels on bars
+            for terrain in terrain_data.index:
+                towers_in_terrain = geo_df[geo_df['terrain_type'] == terrain]['tower'].tolist()
+                idx = list(terrain_data.index).index(terrain)
+                ax7.text(idx, terrain_data[terrain] + 0.5, ', '.join(towers_in_terrain),
+                        ha='center', fontsize=9, fontweight='bold')
         
-        # Add tower labels on bars
-        for terrain in terrain_data.index:
-            towers_in_terrain = geo_df[geo_df['terrain_type'] == terrain]['tower'].tolist()
-            idx = list(terrain_data.index).index(terrain)
-            ax5.text(idx, terrain_data[terrain] + 1, ', '.join(towers_in_terrain),
-                    ha='center', fontsize=9, fontweight='bold')
-        
-        ax5.set_xlabel('Terrain Type', fontsize=11)
-        ax5.set_ylabel('Mean Top 5 Importance (%)', fontsize=11)
-        ax5.set_title('Terrain Type vs Importance', fontsize=12, fontweight='bold')
-        ax5.grid(axis='y', alpha=0.3)
+        ax7.set_xlabel('Terrain Type', fontsize=11)
+        ax7.set_ylabel('Mean Top 5 Importance (%)', fontsize=11)
+        ax7.set_title('Terrain Type vs Importance', fontsize=12, fontweight='bold')
+        ax7.grid(axis='y', alpha=0.3)
         
         # =====================================================================
-        # Plot 6: Geographic Map with Importance as color/size
+        # Plot 8: Geographic Map with Importance as color/size
         # =====================================================================
-        ax6 = axes[1, 2]
+        ax8 = axes[2, 1]
         
-        # Size by importance, color by elevation
+        # Size by importance, color by total height
         sizes = (geo_df['top5_importance'] / geo_df['top5_importance'].max()) * 800 + 100
-        scatter = ax6.scatter(geo_df['lon'], geo_df['lat'], 
-                             s=sizes, c=geo_df['elevation_m'],
-                             cmap='terrain', edgecolors='black', linewidth=2, alpha=0.8)
+        scatter = ax8.scatter(geo_df['lon'], geo_df['lat'], 
+                             s=sizes, c=geo_df['total_height_m'],
+                             cmap='viridis', edgecolors='black', linewidth=2, alpha=0.8)
         
-        # Add tower labels
+        # Add tower labels with height info
         for _, row in geo_df.iterrows():
-            ax6.annotate(f"{row['tower']}\n{row['top5_importance']:.1f}%",
+            ax8.annotate(f"{row['tower']}\n{row['height_m']}m tower",
                         (row['lon'], row['lat']),
                         xytext=(8, 8), textcoords='offset points',
                         fontsize=9, fontweight='bold',
                         bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.7))
         
-        cbar = plt.colorbar(scatter, ax=ax6, shrink=0.8)
-        cbar.set_label('Elevation (m)', fontsize=10)
+        cbar = plt.colorbar(scatter, ax=ax8, shrink=0.8)
+        cbar.set_label('Total Height (Ground + Tower) (m)', fontsize=10)
         
-        ax6.set_xlabel('Longitude (°W)', fontsize=11)
-        ax6.set_ylabel('Latitude (°N)', fontsize=11)
-        ax6.set_title('Geographic Distribution\n(size=importance, color=elevation)', 
+        ax8.set_xlabel('Longitude (°W)', fontsize=11)
+        ax8.set_ylabel('Latitude (°N)', fontsize=11)
+        ax8.set_title('Geographic Distribution\n(size=importance, color=total height)', 
                      fontsize=12, fontweight='bold')
-        ax6.grid(True, alpha=0.3)
+        ax8.grid(True, alpha=0.3)
         
         # =====================================================================
-        # Add summary table as text
+        # Plot 9: Tower Info Summary Table
         # =====================================================================
-        summary_text = "TOWER SUMMARY:\n" + "-"*50 + "\n"
+        ax9 = axes[2, 2]
+        ax9.axis('off')
+        
+        # Create summary table with all variables
+        summary_text = "TOWER SUMMARY (sorted by importance)\n" + "="*55 + "\n\n"
+        summary_text += f"{'Tower':<6} {'Elev(m)':<8} {'TowHt(m)':<9} {'Total(m)':<9} {'Slope°':<7} {'Canopy%':<8} {'Imp%':<6}\n"
+        summary_text += "-"*55 + "\n"
+        
         for _, row in geo_df.sort_values('top5_importance', ascending=False).iterrows():
-            summary_text += f"{row['tower']}: {row['top5_importance']:.1f}% | {row['terrain_type']} | {row['elevation_m']}m\n"
-            summary_text += f"       Top feature: {row['top1_feature'][:30]}... ({row['top1_importance']:.1f}%)\n"
+            summary_text += f"{row['tower']:<6} {row['elevation_m']:<8.0f} {row['height_m']:<9.0f} {row['total_height_m']:<9.0f} "
+            summary_text += f"{row['slope_deg']:<7.1f} {row['canopy_cover_pct']:<8.0f} {row['top5_importance']:<6.1f}\n"
         
-        fig.text(0.02, 0.01, summary_text, fontsize=8, fontfamily='monospace',
-                verticalalignment='bottom', bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.9))
+        summary_text += "\n" + "="*55 + "\n"
+        summary_text += f"{'Terrain Type':<15} | {'Land Use':<18} | Tower\n"
+        summary_text += "-"*55 + "\n"
+        for _, row in geo_df.iterrows():
+            summary_text += f"{row['terrain_type']:<15} | {row['land_use']:<18} | {row['tower']}\n"
+        
+        ax9.text(0.05, 0.95, summary_text, transform=ax9.transAxes, fontsize=9, 
+                fontfamily='monospace', verticalalignment='top',
+                bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.9))
+        ax9.set_title('Tower Characteristics Summary', fontsize=12, fontweight='bold')
         
         plt.tight_layout()
-        plt.subplots_adjust(bottom=0.15)
         
         if output_folder:
             save_path = os.path.join(output_folder, f'geo_features_vs_importance_{event}.png')
@@ -720,6 +757,7 @@ def plot_geographic_features_vs_importance(df: pd.DataFrame, output_folder: str 
 def plot_3d_terrain_importance(df: pd.DataFrame, event: str, output_folder: str = None):
     """
     Create a 3D terrain visualization showing elevation profile with importance markers.
+    Includes tower height visualization.
     """
     event_display = event.replace('_', ' ').replace('lt', '<').replace('gt', '>')
     geo_df = get_tower_geo_dataframe(df, event, top_n=5)
@@ -728,13 +766,17 @@ def plot_3d_terrain_importance(df: pd.DataFrame, event: str, output_folder: str 
         print(f"No data for event: {event}")
         return
     
+    if not REGION_INFO or 'center_lat' not in REGION_INFO:
+        print(f"No region info available for 3D terrain plot")
+        return
+    
     # Create 3D figure
-    fig = plt.figure(figsize=(16, 12))
+    fig = plt.figure(figsize=(18, 14))
     ax = fig.add_subplot(111, projection='3d')
     
     # Convert lat/lon to km from center
-    lat_center = REGION_INFO['center_lat']
-    lon_center = REGION_INFO['center_lon']
+    lat_center = REGION_INFO.get('center_lat', geo_df['lat'].mean())
+    lon_center = REGION_INFO.get('center_lon', geo_df['lon'].mean())
     geo_df['x_km'] = (geo_df['lon'] - lon_center) * 111 * np.cos(np.radians(lat_center))
     geo_df['y_km'] = (geo_df['lat'] - lat_center) * 111
     
@@ -752,45 +794,68 @@ def plot_3d_terrain_importance(df: pd.DataFrame, event: str, output_folder: str 
     # Plot terrain surface
     surf = ax.plot_surface(X, Y, Z, cmap='terrain', alpha=0.6, linewidth=0, antialiased=True)
     
-    # Plot towers as vertical bars from terrain to importance height
+    # Plot towers as vertical bars from terrain to tower top height + importance
     for idx, row in geo_df.iterrows():
-        # Find terrain height at tower location
+        # Get heights
         terrain_height = row['elevation_m']
-        importance_height = terrain_height + row['top5_importance'] * 2  # Scale for visibility
+        tower_height = row.get('height_m', 0)
+        tower_top = terrain_height + tower_height
+        importance_scaled = row['top5_importance'] * 2  # Scale for visibility
+        importance_top = tower_top + importance_scaled
         
-        # Plot vertical line (tower)
+        # Use tower color from JSON
+        tower_color = row.get('color', 'red')
+        
+        # Plot tower structure (ground to tower top) - thick gray line
         ax.plot([row['x_km'], row['x_km']], 
                 [row['y_km'], row['y_km']], 
-                [terrain_height, importance_height],
-                color='red', linewidth=4, alpha=0.9)
+                [terrain_height, tower_top],
+                color='gray', linewidth=6, alpha=0.8, label='Tower' if idx == 0 else '')
+        
+        # Plot importance bar (tower top to importance top) - colored line
+        ax.plot([row['x_km'], row['x_km']], 
+                [row['y_km'], row['y_km']], 
+                [tower_top, importance_top],
+                color=tower_color, linewidth=4, alpha=0.9)
         
         # Plot importance sphere at top
-        ax.scatter([row['x_km']], [row['y_km']], [importance_height],
-                  s=row['top5_importance']*10 + 100, c='red', 
+        ax.scatter([row['x_km']], [row['y_km']], [importance_top],
+                  s=row['top5_importance']*10 + 100, c=[tower_color], 
                   edgecolors='darkred', linewidth=2, alpha=0.8, zorder=5)
         
-        # Tower label
-        ax.text(row['x_km'], row['y_km'], importance_height + 10,
-               f"{row['tower']}\n{row['top5_importance']:.1f}%",
-               ha='center', va='bottom', fontsize=10, fontweight='bold')
+        # Tower label with height info
+        label_text = f"{row['tower']}\n{row['height_m']:.0f}m tower\n{row['top5_importance']:.1f}%"
+        ax.text(row['x_km'], row['y_km'], importance_top + 10,
+               label_text,
+               ha='center', va='bottom', fontsize=9, fontweight='bold')
         
-        # Base marker
+        # Base marker at ground level
         ax.scatter([row['x_km']], [row['y_km']], [terrain_height],
                   s=100, c='brown', marker='^', edgecolors='black', zorder=5)
+        
+        # Marker at tower top
+        ax.scatter([row['x_km']], [row['y_km']], [tower_top],
+                  s=50, c='blue', marker='s', edgecolors='black', zorder=5)
     
     # Labels
     ax.set_xlabel('West ← Distance (km) → East', fontsize=11, labelpad=10)
     ax.set_ylabel('South ← Distance (km) → North', fontsize=11, labelpad=10)
-    ax.set_zlabel('Elevation (m) + Scaled Importance', fontsize=11, labelpad=10)
+    ax.set_zlabel('Height (m)', fontsize=11, labelpad=10)
     
-    ax.set_title(f'3D Terrain Profile with Feature Importance\nTarget: {event_display}\n'
-                f'{REGION_INFO["name"]} - {REGION_INFO["terrain"]}',
+    region_name = REGION_INFO.get('name', 'Unknown')
+    region_terrain = REGION_INFO.get('terrain', 'Unknown')
+    region_climate = REGION_INFO.get('climate', 'Unknown')
+    
+    ax.set_title(f'3D Terrain Profile with Tower Heights & Feature Importance\nTarget: {event_display}\n'
+                f'{region_name} - {region_terrain}',
                 fontsize=14, fontweight='bold')
     
     # Add legend/info
-    info_text = (f"Red bars: Top 5 Feature Importance\n"
-                f"Terrain: Elevation interpolated from tower data\n"
-                f"Climate: {REGION_INFO['climate']}")
+    info_text = (f"Gray bars: Physical tower structure (ground to sensor)\n"
+                f"Colored bars: Top 5 Feature Importance (scaled)\n"
+                f"Triangle: Ground level | Square: Tower top\n"
+                f"Tower heights: {geo_df['height_m'].min():.0f}m - {geo_df['height_m'].max():.0f}m\n"
+                f"Climate: {region_climate}")
     ax.text2D(0.02, 0.98, info_text, transform=ax.transAxes, fontsize=9,
              verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
     
@@ -1098,32 +1163,47 @@ def generate_statistical_report(df: pd.DataFrame, output_folder: str = None, fol
     report_lines.append("=" * 80)
     report_lines.append("GEOGRAPHIC CONTEXT")
     report_lines.append("=" * 80)
-    report_lines.append(f"\nStudy Region: {REGION_INFO['name']}")
-    report_lines.append(f"Location: {REGION_INFO['state']}")
-    report_lines.append(f"Center Coordinates: {REGION_INFO['center_lat']:.4f}N, {abs(REGION_INFO['center_lon']):.4f}W")
-    report_lines.append(f"Terrain: {REGION_INFO['terrain']}")
-    report_lines.append(f"Climate: {REGION_INFO['climate']}")
+    
+    # Handle missing REGION_INFO gracefully
+    if REGION_INFO:
+        report_lines.append(f"\nStudy Region: {REGION_INFO.get('name', 'Unknown')}")
+        report_lines.append(f"Location: {REGION_INFO.get('state', 'Unknown')}")
+        if 'center_lat' in REGION_INFO and 'center_lon' in REGION_INFO:
+            report_lines.append(f"Center Coordinates: {REGION_INFO['center_lat']:.4f}N, {abs(REGION_INFO['center_lon']):.4f}W")
+        report_lines.append(f"Terrain: {REGION_INFO.get('terrain', 'Unknown')}")
+        report_lines.append(f"Climate: {REGION_INFO.get('climate', 'Unknown')}")
+    else:
+        report_lines.append("\nNo region information available.")
+    
     report_lines.append("")
-    report_lines.append("Tower Locations & Terrain Features:")
-    report_lines.append("-" * 80)
-    report_lines.append(f"{'Tower':<8} {'Terrain Type':<15} {'Elevation':<10} {'Slope':<8} {'Canopy%':<10} {'Land Use':<18}")
-    report_lines.append("-" * 80)
+    report_lines.append("Tower Locations & Physical Characteristics:")
+    report_lines.append("-" * 100)
+    report_lines.append(f"{'Tower':<8} {'Terrain Type':<15} {'Elev(m)':<9} {'TowHt(m)':<10} {'Total(m)':<10} {'Slope°':<8} {'Canopy%':<9} {'Land Use':<18}")
+    report_lines.append("-" * 100)
     for tower in towers:
         if tower in TOWER_COORDINATES:
             c = TOWER_COORDINATES[tower]
-            report_lines.append(f"{tower:<8} {c['terrain_type']:<15} {c['elevation_m']:<8}m  {c['slope_deg']:<6.1f}°  {c['canopy_cover_pct']:<8}%  {c['land_use']:<18}")
+            elev = c.get('elevation_m', 0)
+            height = c.get('height_m', 0)
+            total_height = elev + height
+            report_lines.append(f"{tower:<8} {c.get('terrain_type', 'N/A'):<15} {elev:<9.0f} {height:<10.0f} {total_height:<10.0f} {c.get('slope_deg', 0):<6.1f}°  {c.get('canopy_cover_pct', 0):<7.0f}%  {c.get('land_use', 'N/A'):<18}")
     
     # Calculate spatial spread
     lats = [TOWER_COORDINATES[t]['lat'] for t in towers if t in TOWER_COORDINATES]
     lons = [TOWER_COORDINATES[t]['lon'] for t in towers if t in TOWER_COORDINATES]
-    elevs = [TOWER_COORDINATES[t]['elevation_m'] for t in towers if t in TOWER_COORDINATES]
+    elevs = [TOWER_COORDINATES[t].get('elevation_m', 0) for t in towers if t in TOWER_COORDINATES]
+    heights = [TOWER_COORDINATES[t].get('height_m', 0) for t in towers if t in TOWER_COORDINATES]
     
     if lats and lons:
         lat_spread_km = (max(lats) - min(lats)) * 111
         lon_spread_km = (max(lons) - min(lons)) * 111 * np.cos(np.radians(np.mean(lats)))
         report_lines.append("")
         report_lines.append(f"Spatial Extent: ~{lat_spread_km:.2f} km (N-S) x ~{abs(lon_spread_km):.2f} km (E-W)")
-        report_lines.append(f"Elevation Range: {min(elevs)}m - {max(elevs)}m ({max(elevs)-min(elevs)}m difference)")
+        report_lines.append(f"Ground Elevation Range: {min(elevs):.0f}m - {max(elevs):.0f}m ({max(elevs)-min(elevs):.0f}m difference)")
+        if heights:
+            report_lines.append(f"Tower Height Range: {min(heights):.0f}m - {max(heights):.0f}m")
+            total_heights = [e + h for e, h in zip(elevs, heights)]
+            report_lines.append(f"Total Height Range (Ground+Tower): {min(total_heights):.0f}m - {max(total_heights):.0f}m")
     report_lines.append("")
     
     # =========================================================================
@@ -1302,12 +1382,14 @@ def generate_statistical_report(df: pd.DataFrame, output_folder: str = None, fol
         coords = TOWER_COORDINATES[tower]
         tower_importance_data.append({
             'tower': tower,
-            'terrain': coords['terrain_type'],
-            'lat': coords['lat'],
-            'lon': coords['lon'],
-            'elevation': coords['elevation_m'],
-            'slope': coords['slope_deg'],
-            'canopy': coords['canopy_cover_pct'],
+            'terrain': coords.get('terrain_type', 'Unknown'),
+            'lat': coords.get('lat', 0),
+            'lon': coords.get('lon', 0),
+            'elevation': coords.get('elevation_m', 0),
+            'height': coords.get('height_m', 0),
+            'total_height': coords.get('elevation_m', 0) + coords.get('height_m', 0),
+            'slope': coords.get('slope_deg', 0),
+            'canopy': coords.get('canopy_cover_pct', 0),
             'top5_importance': top5_sum
         })
     
@@ -1315,20 +1397,24 @@ def generate_statistical_report(df: pd.DataFrame, output_folder: str = None, fol
         t_df = pd.DataFrame(tower_importance_data)
         t_df = t_df.sort_values('top5_importance', ascending=False)
         
-        report_lines.append(f"\n{'Rank':<6} {'Tower':<8} {'Terrain':<15} {'Elev(m)':<10} {'Slope':<8} {'Canopy%':<10} {'Top5 Imp%':<12}")
-        report_lines.append("-" * 80)
+        report_lines.append(f"\n{'Rank':<6} {'Tower':<8} {'Terrain':<15} {'Elev(m)':<9} {'TowHt(m)':<10} {'Total(m)':<10} {'Slope':<8} {'Top5 Imp%':<12}")
+        report_lines.append("-" * 95)
         for rank, (_, row) in enumerate(t_df.iterrows(), 1):
-            report_lines.append(f"{rank:<6} {row['tower']:<8} {row['terrain']:<15} {row['elevation']:<10} {row['slope']:<6.1f}°  {row['canopy']:<8}%  {row['top5_importance']:>10.2f}")
+            report_lines.append(f"{rank:<6} {row['tower']:<8} {row['terrain']:<15} {row['elevation']:<9.0f} {row['height']:<10.0f} {row['total_height']:<10.0f} {row['slope']:<6.1f}°  {row['top5_importance']:>10.2f}")
         
-        # Correlations with geographic features
+        # Correlations with geographic features including tower height
         report_lines.append("\nCorrelations (Spearman) with Top 5 Feature Importance:")
         report_lines.append("-" * 60)
         
-        for feature_name, feature_col in [('Elevation', 'elevation'), ('Slope', 'slope'), ('Canopy Cover', 'canopy')]:
+        for feature_name, feature_col in [('Ground Elevation', 'elevation'), 
+                                           ('Tower Height', 'height'),
+                                           ('Total Height (Ground+Tower)', 'total_height'),
+                                           ('Slope', 'slope'), 
+                                           ('Canopy Cover', 'canopy')]:
             if len(t_df) >= 3:
                 corr, pval = spearmanr(t_df[feature_col], t_df['top5_importance'])
                 sig = "***" if pval < 0.001 else "**" if pval < 0.01 else "*" if pval < 0.05 else "ns"
-                report_lines.append(f"  {feature_name:<20}: r = {corr:>6.3f}, p = {pval:.4f} {sig}")
+                report_lines.append(f"  {feature_name:<30}: r = {corr:>6.3f}, p = {pval:.4f} {sig}")
     
     # =========================================================================
     # KEY FINDINGS
@@ -1357,15 +1443,26 @@ def generate_statistical_report(df: pd.DataFrame, output_folder: str = None, fol
         top_val = event_df.groupby('feature')['importance_pct'].mean().max()
         report_lines.append(f"   - {event_display}: {top_feat} ({top_val:.2f}%)")
     
-    # Geographic highlights
+    # Geographic highlights including tower height
     if tower_importance_data:
-        report_lines.append(f"\n4. GEOGRAPHIC HIGHLIGHTS:")
+        report_lines.append(f"\n4. GEOGRAPHIC & TOWER HIGHLIGHTS:")
         highest_elev = max(tower_importance_data, key=lambda x: x['elevation'])
         lowest_elev = min(tower_importance_data, key=lambda x: x['elevation'])
+        tallest_tower = max(tower_importance_data, key=lambda x: x['height'])
+        shortest_tower = min(tower_importance_data, key=lambda x: x['height'])
+        highest_total = max(tower_importance_data, key=lambda x: x['total_height'])
         highest_imp = max(tower_importance_data, key=lambda x: x['top5_importance'])
-        report_lines.append(f"   - Highest elevation: {highest_elev['tower']} ({highest_elev['elevation']}m, {highest_elev['terrain']})")
-        report_lines.append(f"   - Lowest elevation: {lowest_elev['tower']} ({lowest_elev['elevation']}m, {lowest_elev['terrain']})")
-        report_lines.append(f"   - Highest Top5 importance: {highest_imp['tower']} ({highest_imp['top5_importance']:.2f}%)")
+        
+        report_lines.append(f"   Ground Elevation:")
+        report_lines.append(f"     - Highest: {highest_elev['tower']} ({highest_elev['elevation']:.0f}m, {highest_elev['terrain']})")
+        report_lines.append(f"     - Lowest: {lowest_elev['tower']} ({lowest_elev['elevation']:.0f}m, {lowest_elev['terrain']})")
+        report_lines.append(f"   Tower Height:")
+        report_lines.append(f"     - Tallest: {tallest_tower['tower']} ({tallest_tower['height']:.0f}m)")
+        report_lines.append(f"     - Shortest: {shortest_tower['tower']} ({shortest_tower['height']:.0f}m)")
+        report_lines.append(f"   Total Height (Ground + Tower):")
+        report_lines.append(f"     - Highest: {highest_total['tower']} ({highest_total['total_height']:.0f}m)")
+        report_lines.append(f"   Feature Importance:")
+        report_lines.append(f"     - Highest Top5 importance: {highest_imp['tower']} ({highest_imp['top5_importance']:.2f}%)")
     
     # Footer
     report_lines.append("\n")
@@ -1836,26 +1933,41 @@ def interactive_menu(df: pd.DataFrame, folder_path: str):
 def main():
     """Main entry point."""
     if len(sys.argv) < 2:
-        print("Usage: python viz_importance.py <results_folder_path>")
+        print("Usage: python viz_importance.py <results_folder_path> [tower_metadata.json]")
         print("Example: python viz_importance.py BESTML_multi_event_results_20251208_155338")
+        print("         python viz_importance.py BESTML_results tower_metadata_generated.json")
         sys.exit(1)
     
     folder_path = sys.argv[1]
+    json_path = sys.argv[2] if len(sys.argv) > 2 else None
     
     # Handle relative paths
     if not os.path.isabs(folder_path):
         folder_path = os.path.join(os.getcwd(), folder_path)
+    
+    if json_path and not os.path.isabs(json_path):
+        json_path = os.path.join(os.getcwd(), json_path)
     
     if not os.path.isdir(folder_path):
         print(f"Error: Folder not found: {folder_path}")
         sys.exit(1)
     
     print(f"\n{'='*60}")
-    print("  Loading Feature Importance Data")
+    print("  Feature Importance Visualization Tool")
     print(f"{'='*60}")
-    print(f"Folder: {folder_path}\n")
+    print(f"Results Folder: {folder_path}\n")
     
-    # Load data
+    # Load tower metadata from JSON
+    print("-"*60)
+    print("Loading Tower Metadata from JSON...")
+    print("-"*60)
+    load_tower_metadata(json_path=json_path, folder_path=folder_path)
+    print()
+    
+    # Load importance data
+    print("-"*60)
+    print("Loading Feature Importance Data...")
+    print("-"*60)
     data = load_importance_files(folder_path)
     
     if not data:

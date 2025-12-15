@@ -1,7 +1,7 @@
 ================================================================================
        FEATURE IMPORTANCE & MODEL PERFORMANCE REPORT
 ================================================================================
-Generated: 2025-12-08 20:11:15
+Generated: 2025-12-10 15:43:39
 Towers analyzed: TOWA, TOWB, TOWD, TOWF, TOWS, TOWY
 Events analyzed: E3_LowTemp_lt0, E4_HighWind_Peak_gt25, E5_LowWind_lt2
 Total feature records: 360
@@ -10,25 +10,27 @@ Total feature records: 360
 GEOGRAPHIC CONTEXT
 ================================================================================
 
-Study Region: Oak Ridge National Laboratory (ORNL)
+Study Region: Oak Ridge Reservation
 Location: Tennessee, USA
-Center Coordinates: 35.9310N, 84.3100W
+Center Coordinates: 35.9283N, 84.3179W
 Terrain: Ridge and Valley Province, Appalachian Region
 Climate: Humid subtropical (Köppen: Cfa)
 
-Tower Locations & Terrain Features:
---------------------------------------------------------------------------------
-Tower    Terrain Type    Elevation  Slope    Canopy%    Land Use          
---------------------------------------------------------------------------------
-TOWA     Valley Floor    280     m  2.5   °  15      %  Research Facility 
-TOWB     Ridge Slope     295     m  8.0   °  45      %  Mixed Forest      
-TOWD     Valley Slope    310     m  5.5   °  30      %  Grassland         
-TOWF     Valley Floor    265     m  1.5   °  5       %  Open Field        
-TOWS     Ridge Top       340     m  3.0   °  60      %  Deciduous Forest  
-TOWY     Valley Slope    275     m  6.0   °  25      %  Shrubland         
+Tower Locations & Physical Characteristics:
+----------------------------------------------------------------------------------------------------
+Tower    Terrain Type    Elev(m)   TowHt(m)   Total(m)   Slope°   Canopy%   Land Use          
+----------------------------------------------------------------------------------------------------
+TOWA     Valley Floor    260       33         293        0.0   °  5      %  Open Field        
+TOWB     Valley Floor    258       33         291        0.6   °  5      %  Open Field        
+TOWD     Valley Slope    262       60         322        10.9  °  20     %  Grassland         
+TOWF     Ridge Slope     354       10         364        15.1  °  55     %  Deciduous Forest  
+TOWS     Valley Slope    322       25         347        3.4   °  33     %  Shrubland         
+TOWY     Valley Slope    285       33         318        5.5   °  25     %  Shrubland         
 
-Spatial Extent: ~1.78 km (N-S) x ~2.43 km (E-W)
-Elevation Range: 265m - 340m (75m difference)
+Spatial Extent: ~7.49 km (N-S) x ~6.39 km (E-W)
+Ground Elevation Range: 258m - 354m (96m difference)
+Tower Height Range: 10m - 60m
+Total Height Range (Ground+Tower): 291m - 364m
 
 ================================================================================
 MODEL PERFORMANCE SUMMARY (from summary_results.csv)
@@ -150,7 +152,7 @@ Rank  Feature                                       Mean%        Std%
 FEATURE IMPORTANCE: TOP FEATURES PER TOWER
 ================================================================================
 
->> TOWER: TOWA (Valley Floor, 280m)
+>> TOWER: TOWA (Valley Floor, 260m)
 ------------------------------------------------------------
 Rank  Feature                                       Mean%        Std%        
 ------------------------------------------------------------
@@ -165,7 +167,7 @@ Rank  Feature                                       Mean%        Std%
 9     BarPresMb_015m_lag96                               2.100         N/A
 10    TempC_015m_lag24                                   2.038         N/A
 
->> TOWER: TOWB (Ridge Slope, 295m)
+>> TOWER: TOWB (Valley Floor, 258m)
 ------------------------------------------------------------
 Rank  Feature                                       Mean%        Std%        
 ------------------------------------------------------------
@@ -180,7 +182,7 @@ Rank  Feature                                       Mean%        Std%
 9     RelHum_015m_roll24_mean                            2.996         N/A
 10    BarPresMb_015m_lag8                                2.962         N/A
 
->> TOWER: TOWD (Valley Slope, 310m)
+>> TOWER: TOWD (Valley Slope, 262m)
 ------------------------------------------------------------
 Rank  Feature                                       Mean%        Std%        
 ------------------------------------------------------------
@@ -195,7 +197,7 @@ Rank  Feature                                       Mean%        Std%
 9     TempC_060m_lag1                                    2.213         N/A
 10    SolarRadWm2_002m_roll12_std                        1.922         N/A
 
->> TOWER: TOWF (Valley Floor, 265m)
+>> TOWER: TOWF (Ridge Slope, 354m)
 ------------------------------------------------------------
 Rank  Feature                                       Mean%        Std%        
 ------------------------------------------------------------
@@ -210,7 +212,7 @@ Rank  Feature                                       Mean%        Std%
 9     TempC_010m_lag24                                   5.614       5.768
 10    TempC_010m_roll12_mean                             5.519         N/A
 
->> TOWER: TOWS (Ridge Top, 340m)
+>> TOWER: TOWS (Valley Slope, 322m)
 ------------------------------------------------------------
 Rank  Feature                                       Mean%        Std%        
 ------------------------------------------------------------
@@ -225,7 +227,7 @@ Rank  Feature                                       Mean%        Std%
 9     VSSpdMph_025m_lag16                                3.372         N/A
 10    PkWSpdMph_025m                                     3.116       0.068
 
->> TOWER: TOWY (Valley Slope, 275m)
+>> TOWER: TOWY (Valley Slope, 285m)
 ------------------------------------------------------------
 Rank  Feature                                       Mean%        Std%        
 ------------------------------------------------------------
@@ -264,20 +266,22 @@ AbsHum                         22.90       1.272       1.543        18
 SPATIAL ANALYSIS: GEOGRAPHIC FEATURES vs IMPORTANCE
 ================================================================================
 
-Rank   Tower    Terrain         Elev(m)    Slope    Canopy%    Top5 Imp%   
---------------------------------------------------------------------------------
-1      TOWA     Valley Floor    280        2.5   °  15      %      101.79
-2      TOWS     Ridge Top       340        3.0   °  60      %      101.64
-3      TOWY     Valley Slope    275        6.0   °  25      %       89.91
-4      TOWD     Valley Slope    310        5.5   °  30      %       82.17
-5      TOWB     Ridge Slope     295        8.0   °  45      %       66.40
-6      TOWF     Valley Floor    265        1.5   °  5       %       60.14
+Rank   Tower    Terrain         Elev(m)   TowHt(m)   Total(m)   Slope    Top5 Imp%   
+-----------------------------------------------------------------------------------------------
+1      TOWA     Valley Floor    260       33         293        0.0   °      101.79
+2      TOWS     Valley Slope    322       25         347        3.4   °      101.64
+3      TOWY     Valley Slope    285       33         318        5.5   °       89.91
+4      TOWD     Valley Slope    262       60         322        10.9  °       82.17
+5      TOWB     Valley Floor    258       33         291        0.6   °       66.40
+6      TOWF     Ridge Slope     354       10         364        15.1  °       60.14
 
 Correlations (Spearman) with Top 5 Feature Importance:
 ------------------------------------------------------------
-  Elevation           : r =  0.371, p = 0.4685 ns
-  Slope               : r = -0.086, p = 0.8717 ns
-  Canopy Cover        : r =  0.200, p = 0.7040 ns
+  Ground Elevation              : r = -0.200, p = 0.7040 ns
+  Tower Height                  : r =  0.213, p = 0.6860 ns
+  Total Height (Ground+Tower)   : r = -0.257, p = 0.6228 ns
+  Slope                         : r = -0.657, p = 0.1562 ns
+  Canopy Cover                  : r = -0.319, p = 0.5379 ns
 
 
 ================================================================================
@@ -295,10 +299,17 @@ KEY FINDINGS & HIGHLIGHTS
    - E4 HighWind Peak >25: TempC_010m_lag24 (9.69%)
    - E5 LowWind <2: SolarRadWm2_002m_lag24 (15.08%)
 
-4. GEOGRAPHIC HIGHLIGHTS:
-   - Highest elevation: TOWS (340m, Ridge Top)
-   - Lowest elevation: TOWF (265m, Valley Floor)
-   - Highest Top5 importance: TOWA (101.79%)
+4. GEOGRAPHIC & TOWER HIGHLIGHTS:
+   Ground Elevation:
+     - Highest: TOWF (354m, Ridge Slope)
+     - Lowest: TOWB (258m, Valley Floor)
+   Tower Height:
+     - Tallest: TOWD (60m)
+     - Shortest: TOWF (10m)
+   Total Height (Ground + Tower):
+     - Highest: TOWF (364m)
+   Feature Importance:
+     - Highest Top5 importance: TOWA (101.79%)
 
 
 ================================================================================

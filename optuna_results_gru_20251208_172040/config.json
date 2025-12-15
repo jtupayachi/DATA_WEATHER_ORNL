@@ -1,0 +1,22 @@
+{
+  "timestamp": "20251208_172040",
+  "model_type": "gru",
+  "n_trials": 3,
+  "n_splits": 3,
+  "num_epochs": 50,
+  "early_stopping_patience": 8,
+  "forecast_horizon": "6hours",
+  "search_space": {
+    "sequence_length": "[24, 48]",
+    "batch_size": "[32, 64, 128]",
+    "learning_rate": "(0.0001, 0.01)",
+    "weight_decay": "(1e-06, 0.001)",
+    "hidden_dim": "[64, 128]",
+    "num_layers": "[1, 2]",
+    "dropout": "(0.1, 0.4)",
+    "bidirectional": "[True, False]",
+    "optimizer": "['adamw']",
+    "scheduler": "['cosine', 'none']"
+  },
+  "total_experiments": 18
+}
