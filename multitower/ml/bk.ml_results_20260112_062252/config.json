@@ -1,0 +1,21 @@
+{
+  "target_events": [
+    "event_E3_LowTemp_lt0",
+    "event_E4_HighWind_Peak_gt25",
+    "event_E5_LowWind_lt2"
+  ],
+  "models_trained": [
+    "lightgbm",
+    "xgboost"
+  ],
+  "n_splits": 5,
+  "lag_config": "long",
+  "rolling_windows": [
+    4,
+    12,
+    24,
+    48
+  ],
+  "forecast_horizon": "1hr",
+  "timestamp": "20260112_062252"
+}
