@@ -41,6 +41,18 @@ print("="*80)
 # Read the CSV file
 df = pd.read_csv("../../fully_labeled_weather_data_with_events.csv")
 
+# FILTER TO LAST 2 YEARS (2021-2023) for faster training
+print(f"\n{'='*80}", flush=True)
+print("FILTERING DATA TO LAST 2 YEARS (2021-2023)", flush=True)
+print(f"{'='*80}", flush=True)
+original_len = len(df)
+df['timestamp'] = pd.to_datetime(df['timestamp'])
+df = df[(df['timestamp'] >= '2021-01-01') & (df['timestamp'] < '2023-01-01')].copy()
+print(f"Original data: {original_len:,} rows", flush=True)
+print(f"Filtered data: {len(df):,} rows ({len(df)/original_len*100:.1f}%)", flush=True)
+print(f"Date range: {df['timestamp'].min()} to {df['timestamp'].max()}", flush=True)
+print(f"{'='*80}\n", flush=True)
+
 # Move 'tower' and 'timestamp' to the first two columns
 cols = df.columns.tolist()
 priority_cols = ['tower', 'timestamp']
@@ -120,15 +132,15 @@ print(f"\n  Applying fixed event thresholds...", flush=True)
 
 EVENT_SPECS = {}
 
-# E3: Low Temperature - FIXED THRESHOLD: <0°C, Duration: 2.0 hours
+# E3: Low Temperature - FIXED THRESHOLD: <3°C, Duration: 2.0 hours
 # Name stays E3_LowTemp_lt0 for consistency
-print(f"    E3_LowTemp_lt0: Threshold = 0.0°C (FIXED), Duration = 2.0 hours", flush=True)
-EVENT_SPECS["E3_LowTemp_lt0"] = (["TempC"], lambda df, col: df[col["TempC"]] < 0.0, 2.0)
+print(f"    E3_LowTemp_lt0: Threshold = 3.0°C (FIXED), Duration = 2.0 hours", flush=True)
+EVENT_SPECS["E3_LowTemp_lt0"] = (["TempC"], lambda df, col: df[col["TempC"]] < 3.0, 2.0)
 
-# E4: High Wind - FIXED THRESHOLD: >20 mph, Duration: 0.5 hours
+# E4: High Wind - FIXED THRESHOLD: >19 mph, Duration: 0.5 hours
 # Name stays E4_HighWind_Peak_gt25 for consistency
-print(f"    E4_HighWind_Peak_gt25: Threshold = 20.0 mph (FIXED), Duration = 0.5 hours", flush=True)
-EVENT_SPECS["E4_HighWind_Peak_gt25"] = (["PkWSpdMph"], lambda df, col: df[col["PkWSpdMph"]] > 20.0, 0.5)
+print(f"    E4_HighWind_Peak_gt25: Threshold = 19.0 mph (FIXED), Duration = 0.5 hours", flush=True)
+EVENT_SPECS["E4_HighWind_Peak_gt25"] = (["PkWSpdMph"], lambda df, col: df[col["PkWSpdMph"]] > 19.0, 0.5)
 
 # E5: Low Wind - FIXED THRESHOLD: <4 mph, Duration: 1.0 hours
 # Name stays E5_LowWind_lt2 for consistency
@@ -275,11 +287,92 @@ def resample_for_event(df: pd.DataFrame, event_col: str, resample_rule: str, eve
     print(f"    After: {len(df_resampled):,} rows", flush=True)
     print(f"    Event rate: {df_resampled[event_col].mean()*100:.2f}%", flush=True)
     
+    # 🌦️ LOAD AND MERGE NSRD DATA
+    print(f"\n  Loading NSRD data for {event_col}...", flush=True)
+    df_nsrd = load_nsrd_data_for_event(event_col)
+    
+    if df_nsrd is not None:
+        df_resampled = merge_nsrd_with_tower_data(df_resampled, df_nsrd)
+    else:
+        print(f"  ⚠️  Continuing without NSRD data", flush=True)
+    
     return df_resampled
 
 # Replace df with pivoted version (will be resampled per-event in training loop)
 df = df_pivot
 print("\n" + "="*80, flush=True)
+
+# ==================== LOAD AND MERGE NSRD DATA ====================
+def load_nsrd_data_for_event(event_name: str, base_path: str = "../../data") -> Optional[pd.DataFrame]:
+    """
+    Load NSRD data resampled for specific event.
+    
+    Parameters:
+    -----------
+    event_name : str
+        Event name (e.g., 'event_E3_LowTemp_lt0')
+    base_path : str
+        Path to data directory
+        
+    Returns:
+    --------
+    pd.DataFrame or None
+        NSRD data with timestamp and NSRD_* columns, or None if file not found
+    """
+    # Extract event identifier (remove 'event_' prefix)
+    event_id = event_name.replace('event_', '')
+    
+    # Construct filename
+    nsrd_file = Path(base_path) / f"NSRD_BackgroundMet2022_{event_id}_resampled.csv"
+    
+    if not nsrd_file.exists():
+        print(f"  ⚠️  NSRD file not found: {nsrd_file}", flush=True)
+        return None
+    
+    # Load NSRD data
+    df_nsrd = pd.read_csv(nsrd_file)
+    df_nsrd['timestamp'] = pd.to_datetime(df_nsrd['timestamp'])
+    
+    print(f"  ✓ Loaded NSRD data: {len(df_nsrd):,} rows, {len(df_nsrd.columns)-1} features", flush=True)
+    print(f"    Date range: {df_nsrd['timestamp'].min()} to {df_nsrd['timestamp'].max()}", flush=True)
+    
+    return df_nsrd
+
+
+def merge_nsrd_with_tower_data(df_tower: pd.DataFrame, df_nsrd: pd.DataFrame) -> pd.DataFrame:
+    """
+    Merge NSRD data with tower data on timestamp.
+    
+    Parameters:
+    -----------
+    df_tower : pd.DataFrame
+        Tower data with timestamp column
+    df_nsrd : pd.DataFrame
+        NSRD data with timestamp and NSRD_* columns
+        
+    Returns:
+    --------
+    pd.DataFrame
+        Merged dataframe with both tower and NSRD features
+    """
+    print(f"  Merging NSRD data with tower data...", flush=True)
+    print(f"    Tower data: {len(df_tower):,} rows", flush=True)
+    print(f"    NSRD data: {len(df_nsrd):,} rows", flush=True)
+    
+    # Merge on timestamp (left join to keep all tower timestamps)
+    df_merged = df_tower.merge(df_nsrd, on='timestamp', how='left')
+    
+    # Fill NaN values in NSRD columns (forward fill → backward fill → 0)
+    nsrd_cols = [c for c in df_nsrd.columns if c.startswith('NSRD_')]
+    for col in nsrd_cols:
+        if col in df_merged.columns:
+            df_merged[col] = df_merged[col].ffill().bfill().fillna(0)
+    
+    print(f"    Merged data: {len(df_merged):,} rows, {len(df_merged.columns)} columns", flush=True)
+    print(f"    Added {len(nsrd_cols)} NSRD features", flush=True)
+    
+    return df_merged
+
 
 # ==================== FILTER COLUMNS BY NULL PERCENTAGE ====================
 def filter_columns_by_nulls(df, threshold=80):
@@ -512,7 +605,7 @@ def prepare_multitower_features(df: pd.DataFrame,
             feature_dfs.append(df[col].shift(lag).to_frame(lag_col))
             feature_names.append(lag_col)
     
-    # 2. Rolling features
+    # 2. Rolling features (ENHANCED: mean, std, min, max)
     if use_rolling:
         print(f"  Creating rolling features: windows={rolling_windows}", flush=True)
         for col in numeric_cols:
@@ -522,10 +615,119 @@ def prepare_multitower_features(df: pd.DataFrame,
                 feature_dfs.append(df[col].rolling(window=window).mean().to_frame(roll_mean_col))
                 feature_names.append(roll_mean_col)
                 
-                # Std
+                # Std (volatility)
                 roll_std_col = f'{col}_roll{window}_std'
                 feature_dfs.append(df[col].rolling(window=window).std().to_frame(roll_std_col))
                 feature_names.append(roll_std_col)
+                
+                # Min (extreme low)
+                roll_min_col = f'{col}_roll{window}_min'
+                feature_dfs.append(df[col].rolling(window=window).min().to_frame(roll_min_col))
+                feature_names.append(roll_min_col)
+                
+                # Max (extreme high)
+                roll_max_col = f'{col}_roll{window}_max'
+                feature_dfs.append(df[col].rolling(window=window).max().to_frame(roll_max_col))
+                feature_names.append(roll_max_col)
+    
+    # 3. 🔥 RATE OF CHANGE (1st & 2nd derivatives) - Critical for extreme events!
+    print(f"  Creating rate of change features (derivatives)...", flush=True)
+    for col in numeric_cols:
+        # 1st derivative (velocity) - rate of change
+        diff1_col = f'{col}_diff1'
+        feature_dfs.append(df[col].diff(1).to_frame(diff1_col))
+        feature_names.append(diff1_col)
+        
+        # 2nd derivative (acceleration) - rate of rate of change
+        diff2_col = f'{col}_diff2'
+        feature_dfs.append(df[col].diff(1).diff(1).to_frame(diff2_col))
+        feature_names.append(diff2_col)
+    
+    # 4. 🔥 INTER-TOWER SPATIAL GRADIENTS - Extreme events show spatial patterns!
+    print(f"  Creating inter-tower spatial gradient features...", flush=True)
+    towers = ['TOWA', 'TOWB', 'TOWD', 'TOWF', 'TOWS', 'TOWY']
+    
+    # Key variables for spatial analysis
+    spatial_vars = ['TempC_030m', 'PkWSpdMph_030m', 'RH_030m']
+    
+    for var in spatial_vars:
+        # Find towers that have this variable
+        tower_cols = [f'{t}_{var}' for t in towers if f'{t}_{var}' in df.columns]
+        
+        if len(tower_cols) >= 2:
+            # Mean across towers
+            mean_col = f'{var}_tower_mean'
+            feature_dfs.append(df[tower_cols].mean(axis=1).to_frame(mean_col))
+            feature_names.append(mean_col)
+            
+            # Std across towers (spatial variability)
+            std_col = f'{var}_tower_std'
+            feature_dfs.append(df[tower_cols].std(axis=1).to_frame(std_col))
+            feature_names.append(std_col)
+            
+            # Range across towers (max-min spatial gradient)
+            range_col = f'{var}_tower_range'
+            feature_dfs.append((df[tower_cols].max(axis=1) - df[tower_cols].min(axis=1)).to_frame(range_col))
+            feature_names.append(range_col)
+            
+            # Deviation from tower mean (anomaly detection)
+            for tower_col in tower_cols:
+                dev_col = f'{tower_col}_dev_from_mean'
+                tower_mean = df[tower_cols].mean(axis=1)
+                feature_dfs.append((df[tower_col] - tower_mean).to_frame(dev_col))
+                feature_names.append(dev_col)
+    
+    # 5. 🔥 TEMPORAL CONTEXT - Extreme events have time-of-day/seasonal patterns!
+    print(f"  Creating temporal context features...", flush=True)
+    hour = df['timestamp'].dt.hour
+    day_of_week = df['timestamp'].dt.dayofweek
+    month = df['timestamp'].dt.month
+    
+    # Cyclical encoding for temporal features
+    feature_dfs.append(np.sin(2 * np.pi * hour / 24).to_frame('hour_sin'))
+    feature_names.append('hour_sin')
+    feature_dfs.append(np.cos(2 * np.pi * hour / 24).to_frame('hour_cos'))
+    feature_names.append('hour_cos')
+    
+    feature_dfs.append(np.sin(2 * np.pi * day_of_week / 7).to_frame('dow_sin'))
+    feature_names.append('dow_sin')
+    feature_dfs.append(np.cos(2 * np.pi * day_of_week / 7).to_frame('dow_cos'))
+    feature_names.append('dow_cos')
+    
+    feature_dfs.append(np.sin(2 * np.pi * month / 12).to_frame('month_sin'))
+    feature_names.append('month_sin')
+    feature_dfs.append(np.cos(2 * np.pi * month / 12).to_frame('month_cos'))
+    feature_names.append('month_cos')
+    
+    # 6. 🔥 THRESHOLD PROXIMITY - How close to danger zone!
+    print(f"  Creating threshold proximity features...", flush=True)
+    
+    if 'LowTemp' in target_col:
+        # For low temp events: distance to 3°C
+        for tower in towers:
+            temp_col = f'{tower}_TempC_030m'
+            if temp_col in df.columns:
+                prox_col = f'{temp_col}_dist_to_3C'
+                feature_dfs.append((df[temp_col] - 3.0).to_frame(prox_col))
+                feature_names.append(prox_col)
+    
+    elif 'HighWind' in target_col:
+        # For high wind events: distance to 20 mph
+        for tower in towers:
+            wind_col = f'{tower}_PkWSpdMph_030m'
+            if wind_col in df.columns:
+                prox_col = f'{wind_col}_dist_to_20mph'
+                feature_dfs.append((df[wind_col] - 20.0).to_frame(prox_col))
+                feature_names.append(prox_col)
+    
+    elif 'LowWind' in target_col:
+        # For low wind events: distance to 4 mph
+        for tower in towers:
+            wind_col = f'{tower}_PkWSpdMph_030m'
+            if wind_col in df.columns:
+                prox_col = f'{wind_col}_dist_to_4mph'
+                feature_dfs.append((df[wind_col] - 4.0).to_frame(prox_col))
+                feature_names.append(prox_col)
     
     # Combine all features
     X = pd.concat(feature_dfs, axis=1)
@@ -655,7 +857,16 @@ def train_xgboost_model(X_train, y_train, X_val, y_val, params, sample_weights=N
 
 def calculate_all_metrics(y_true, y_pred, y_pred_proba):
     """Calculate comprehensive classification metrics"""
-    tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+    # Handle case where only one class is predicted (e.g., all zeros or all ones)
+    cm = confusion_matrix(y_true, y_pred)
+    if cm.size == 1:
+        # Only one class present - handle gracefully
+        if y_pred[0] == 0:  # All predicted as negative
+            tn, fp, fn, tp = cm[0, 0], 0, 0, 0
+        else:  # All predicted as positive
+            tn, fp, fn, tp = 0, 0, 0, cm[0, 0]
+    else:
+        tn, fp, fn, tp = cm.ravel()
     
     metrics = {
         'accuracy': accuracy_score(y_true, y_pred),
@@ -946,8 +1157,8 @@ def save_multitower_results(all_results: Dict, config: MultiTowerConfig):
         'models_trained': config.MODELS_TO_TRAIN,
         'n_splits': config.N_SPLITS,
         'lag_config': config.SELECTED_LAG_CONFIG,
-        'rolling_windows': config.ROLLING_WINDOWS,
-        'forecast_horizons': config.SELECTED_HORIZONS,
+        'rolling_windows_per_event': config.ROLLING_WINDOWS_PER_EVENT,
+        'forecast_horizons_per_event': config.SELECTED_HORIZONS_PER_EVENT,
         'timestamp': timestamp
     }
     

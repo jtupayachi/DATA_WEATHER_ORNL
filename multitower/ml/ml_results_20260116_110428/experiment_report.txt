@@ -1,0 +1,368 @@
+================================================================================
+MULTI-TOWER ML RESULTS SUMMARY
+================================================================================
+Timestamp: 20260116_110428
+Approach: Single model per event, trained on ALL towers
+
+
+################################################################################
+# FORECAST HORIZON: 1hr
+################################################################################
+
+======================================================================
+EVENT: event_E5_LowWind_lt2
+======================================================================
+
+XGBOOST:
+  Cross-Validation (5-fold):
+    AUC: 0.9597 ± 0.0055
+    F1:  0.8228 ± 0.0102
+    MCC: 0.7323 ± 0.0090
+
+  Final Test Set (Overall):
+    AUC: 0.9550
+    F1:  0.8200
+    MCC: 0.7154
+    Balanced Accuracy: 0.8716
+    Cohen's Kappa: 0.6889
+    Precision: 0.7092
+    Recall: 0.9718
+
+  Top 10 Most Important Features (SHAP):
+    2579. TOWA_PkWSpdMph_015m_roll2_min           : 0.399188
+    2577. TOWA_PkWSpdMph_015m_roll2_mean          : 0.304431
+    4218. TOWB_PkWSpdMph_030m_dist_to_4mph        : 0.259825
+    4206. PkWSpdMph_030m_tower_mean               : 0.255131
+    2707. TOWD_PkWSpdMph_035m_roll2_min           : 0.249575
+    4217. TOWA_PkWSpdMph_030m_dist_to_4mph        : 0.229536
+    2705. TOWD_PkWSpdMph_035m_roll2_mean          : 0.224418
+    2627. TOWY_PkWSpdMph_015m_roll2_min           : 0.201873
+    2625. TOWY_PkWSpdMph_015m_roll2_mean          : 0.182000
+    3268. TOWF_SolarRadWm2_010m_roll2_max         : 0.101479
+
+  SHAP importance saved to: ml_results_20260116_110428/models/event_E5_LowWind_lt2_1hr_xgboost_shap_importance.csv
+
+======================================================================
+EVENT: event_E4_HighWind_Peak_gt25
+======================================================================
+
+XGBOOST:
+  Cross-Validation (5-fold):
+    AUC: 0.9283 ± 0.0158
+    F1:  0.6215 ± 0.0571
+    MCC: 0.5901 ± 0.0438
+
+  Final Test Set (Overall):
+    AUC: 0.9469
+    F1:  0.5968
+    MCC: 0.5706
+    Balanced Accuracy: 0.8556
+    Cohen's Kappa: 0.5482
+    Precision: 0.4785
+    Recall: 0.7927
+
+  Top 10 Most Important Features (SHAP):
+    2644. TOWS_PkWSpdMph_025m_roll2_max           : 1.385665
+    2724. TOWD_PkWSpdMph_060m_roll2_max           : 0.283649
+    4217. TOWA_PkWSpdMph_030m_dist_to_20mph       : 0.212062
+    4031. TOWS_PkWSpdMph_025m_diff1               : 0.124893
+    2692. TOWY_PkWSpdMph_033m_roll2_max           : 0.122843
+    2694. TOWY_PkWSpdMph_033m_roll6_std           : 0.104599
+    2641. TOWS_PkWSpdMph_025m_roll2_mean          : 0.093663
+    2714. TOWD_PkWSpdMph_035m_roll12_std          : 0.079712
+    3071. TOWD_SigPhi_060m_roll24_min             : 0.066328
+    2162. TOWA_WSpdMph_015m_lag2                  : 0.064085
+
+  SHAP importance saved to: ml_results_20260116_110428/models/event_E4_HighWind_Peak_gt25_1hr_xgboost_shap_importance.csv
+
+################################################################################
+# FORECAST HORIZON: 3hr
+################################################################################
+
+======================================================================
+EVENT: event_E5_LowWind_lt2
+======================================================================
+
+XGBOOST:
+  Cross-Validation (5-fold):
+    AUC: 0.8942 ± 0.0117
+    F1:  0.7218 ± 0.0294
+    MCC: 0.5719 ± 0.0247
+
+  Final Test Set (Overall):
+    AUC: 0.8977
+    F1:  0.7172
+    MCC: 0.5385
+    Balanced Accuracy: 0.7748
+    Cohen's Kappa: 0.4844
+    Precision: 0.5786
+    Recall: 0.9432
+
+  Top 10 Most Important Features (SHAP):
+    1340. TOWY_SolarRadWm2_015m_lag20             : 0.382146
+    4109. TOWF_SolarRadWm2_010m_diff1             : 0.205618
+    4212. hour_cos                                : 0.186338
+    4119. TOWB_TempC_015m_diff1                   : 0.150726
+    4217. TOWA_PkWSpdMph_030m_dist_to_4mph        : 0.133522
+    1341. TOWY_SolarRadWm2_015m_lag21             : 0.120090
+    4215. month_sin                               : 0.080651
+    4107. TOWD_SolarRadWm2_002m_diff1             : 0.079011
+    3841. TOWA_WSpdMph_015m_roll2_mean            : 0.072228
+    2692. TOWY_PkWSpdMph_033m_roll2_max           : 0.067403
+
+  SHAP importance saved to: ml_results_20260116_110428/models/event_E5_LowWind_lt2_3hr_xgboost_shap_importance.csv
+
+======================================================================
+EVENT: event_E4_HighWind_Peak_gt25
+======================================================================
+
+XGBOOST:
+  Cross-Validation (5-fold):
+    AUC: 0.8459 ± 0.0180
+    F1:  0.3995 ± 0.1014
+    MCC: 0.3537 ± 0.0771
+
+  Final Test Set (Overall):
+    AUC: 0.8415
+    F1:  0.4191
+    MCC: 0.3708
+    Balanced Accuracy: 0.7491
+    Cohen's Kappa: 0.3438
+    Precision: 0.3147
+    Recall: 0.6269
+
+  Top 10 Most Important Features (SHAP):
+    2644. TOWS_PkWSpdMph_025m_roll2_max           : 0.346485
+    2692. TOWY_PkWSpdMph_033m_roll2_max           : 0.275093
+    4215. month_sin                               : 0.165797
+    2724. TOWD_PkWSpdMph_060m_roll2_max           : 0.157372
+    3071. TOWD_SigPhi_060m_roll24_min             : 0.087966
+    1294. TOWD_SolarRadWm2_002m_lag22             : 0.061538
+    4119. TOWB_TempC_015m_diff1                   : 0.059822
+    2714. TOWD_PkWSpdMph_035m_roll12_std          : 0.057809
+    2144. TOWF_WSpdMph_010m_lag8                  : 0.050806
+    2641. TOWS_PkWSpdMph_025m_roll2_mean          : 0.050056
+
+  SHAP importance saved to: ml_results_20260116_110428/models/event_E4_HighWind_Peak_gt25_3hr_xgboost_shap_importance.csv
+
+################################################################################
+# FORECAST HORIZON: 6hr
+################################################################################
+
+======================================================================
+EVENT: event_E5_LowWind_lt2
+======================================================================
+
+XGBOOST:
+  Cross-Validation (5-fold):
+    AUC: 0.8490 ± 0.0200
+    F1:  0.6810 ± 0.0415
+    MCC: 0.5049 ± 0.0365
+
+  Final Test Set (Overall):
+    AUC: 0.8610
+    F1:  0.6929
+    MCC: 0.4913
+    Balanced Accuracy: 0.7491
+    Cohen's Kappa: 0.4356
+    Precision: 0.5536
+    Recall: 0.9259
+
+  Top 10 Most Important Features (SHAP):
+    4212. hour_cos                                : 1.405911
+    4215. month_sin                               : 0.118973
+    2847. TOWF_RelHum_010m_roll24_min             : 0.097865
+    2976. TOWD_SigPhi_015m_roll24_max             : 0.093610
+    4216. month_cos                               : 0.088171
+    3988. TOWD_WSpdMph_060m_roll2_max             : 0.071307
+    1334. TOWY_SolarRadWm2_015m_lag14             : 0.063355
+    2878. TOWB_RelHum_015m_roll24_std             : 0.049215
+    2692. TOWY_PkWSpdMph_033m_roll2_max           : 0.043943
+    3277. TOWF_SolarRadWm2_010m_roll24_mean       : 0.038956
+
+  SHAP importance saved to: ml_results_20260116_110428/models/event_E5_LowWind_lt2_6hr_xgboost_shap_importance.csv
+
+======================================================================
+EVENT: event_E4_HighWind_Peak_gt25
+======================================================================
+
+XGBOOST:
+  Cross-Validation (5-fold):
+    AUC: 0.7798 ± 0.0374
+    F1:  0.3096 ± 0.1087
+    MCC: 0.2460 ± 0.0825
+
+  Final Test Set (Overall):
+    AUC: 0.7362
+    F1:  0.3207
+    MCC: 0.2564
+    Balanced Accuracy: 0.6845
+    Cohen's Kappa: 0.2270
+    Precision: 0.2277
+    Recall: 0.5423
+
+  Top 10 Most Important Features (SHAP):
+    3072. TOWD_SigPhi_060m_roll24_max             : 0.268453
+    4215. month_sin                               : 0.240606
+    3071. TOWD_SigPhi_060m_roll24_min             : 0.184359
+    4212. hour_cos                                : 0.156525
+    2644. TOWS_PkWSpdMph_025m_roll2_max           : 0.098385
+    3831. TOWF_WSpdMph_010m_roll6_min             : 0.096819
+    2652. TOWS_PkWSpdMph_025m_roll12_max          : 0.089671
+    3293. TOWY_SolarRadWm2_015m_roll24_mean       : 0.082171
+    1288. TOWD_SolarRadWm2_002m_lag16             : 0.072989
+    2487. TOWF_BarPresMb_010m_roll6_min           : 0.067255
+
+  SHAP importance saved to: ml_results_20260116_110428/models/event_E4_HighWind_Peak_gt25_6hr_xgboost_shap_importance.csv
+
+################################################################################
+# FORECAST HORIZON: 12hr
+################################################################################
+
+======================================================================
+EVENT: event_E5_LowWind_lt2
+======================================================================
+
+XGBOOST:
+  Cross-Validation (5-fold):
+    AUC: 0.8273 ± 0.0278
+    F1:  0.6625 ± 0.0551
+    MCC: 0.4715 ± 0.0701
+
+  Final Test Set (Overall):
+    AUC: 0.8197
+    F1:  0.6571
+    MCC: 0.4243
+    Balanced Accuracy: 0.7067
+    Cohen's Kappa: 0.3497
+    Precision: 0.5060
+    Recall: 0.9368
+
+  Top 10 Most Important Features (SHAP):
+    4211. hour_sin                                : 1.157730
+    4215. month_sin                               : 0.198426
+    4216. month_cos                               : 0.095140
+    3272. TOWF_SolarRadWm2_010m_roll6_max         : 0.077345
+    3288. TOWY_SolarRadWm2_015m_roll6_max         : 0.066648
+    1320. TOWF_SolarRadWm2_010m_lag24             : 0.062324
+    3276. TOWF_SolarRadWm2_010m_roll12_max        : 0.055923
+    3087. TOWF_Sigma_010m_roll24_min              : 0.048699
+    2926. TOWF_SigPhi_010m_roll24_std             : 0.045159
+    2928. TOWF_SigPhi_010m_roll24_max             : 0.044311
+
+  SHAP importance saved to: ml_results_20260116_110428/models/event_E5_LowWind_lt2_12hr_xgboost_shap_importance.csv
+
+======================================================================
+EVENT: event_E4_HighWind_Peak_gt25
+======================================================================
+
+XGBOOST:
+  Cross-Validation (5-fold):
+    AUC: 0.7456 ± 0.0368
+    F1:  0.2879 ± 0.1014
+    MCC: 0.2181 ± 0.0738
+
+  Final Test Set (Overall):
+    AUC: 0.6769
+    F1:  0.2543
+    MCC: 0.1705
+    Balanced Accuracy: 0.6209
+    Cohen's Kappa: 0.1527
+    Precision: 0.1827
+    Recall: 0.4179
+
+  Top 10 Most Important Features (SHAP):
+    4215. month_sin                               : 0.450062
+    3260. TOWD_SolarRadWm2_002m_roll12_max        : 0.241418
+    2575. TOWF_PkWSpdMph_010m_roll24_min          : 0.191145
+    2944. TOWA_SigPhi_015m_roll24_max             : 0.137991
+    3258. TOWD_SolarRadWm2_002m_roll12_std        : 0.106999
+    3071. TOWD_SigPhi_060m_roll24_min             : 0.089000
+    3304. TOWD_TempC_002m_roll6_max               : 0.063536
+    3742. TOWS_WDir_025m_roll24_std               : 0.058217
+    3581. TOWS_VSSpdMph_025m_roll24_mean          : 0.049447
+    3624. TOWY_VSSpdMph_033m_roll6_max            : 0.048738
+
+  SHAP importance saved to: ml_results_20260116_110428/models/event_E4_HighWind_Peak_gt25_12hr_xgboost_shap_importance.csv
+
+################################################################################
+# FORECAST HORIZON: 24hr
+################################################################################
+
+======================================================================
+EVENT: event_E5_LowWind_lt2
+======================================================================
+
+XGBOOST:
+  Cross-Validation (5-fold):
+    AUC: 0.8122 ± 0.0285
+    F1:  0.6579 ± 0.0627
+    MCC: 0.4669 ± 0.0754
+
+  Final Test Set (Overall):
+    AUC: 0.7771
+    F1:  0.6575
+    MCC: 0.4249
+    Balanced Accuracy: 0.7080
+    Cohen's Kappa: 0.3527
+    Precision: 0.5077
+    Recall: 0.9328
+
+  Top 10 Most Important Features (SHAP):
+    4211. hour_sin                                : 0.801454
+    3287. TOWY_SolarRadWm2_015m_roll6_min         : 0.489116
+    4215. month_sin                               : 0.266603
+    3255. TOWD_SolarRadWm2_002m_roll6_min         : 0.068667
+    3695. TOWB_WDir_015m_roll24_min               : 0.059192
+    3272. TOWF_SolarRadWm2_010m_roll6_max         : 0.051037
+    3680. TOWA_WDir_015m_roll24_max               : 0.033464
+    2584. TOWA_PkWSpdMph_015m_roll6_max           : 0.032733
+    4216. month_cos                               : 0.028790
+    3223. TOWD_Sigma_035m_roll6_min               : 0.028006
+
+  SHAP importance saved to: ml_results_20260116_110428/models/event_E5_LowWind_lt2_24hr_xgboost_shap_importance.csv
+
+======================================================================
+EVENT: event_E4_HighWind_Peak_gt25
+======================================================================
+
+XGBOOST:
+  Cross-Validation (5-fold):
+    AUC: 0.6690 ± 0.0572
+    F1:  0.2162 ± 0.0881
+    MCC: 0.1387 ± 0.0791
+
+  Final Test Set (Overall):
+    AUC: 0.6168
+    F1:  0.2150
+    MCC: 0.1206
+    Balanced Accuracy: 0.5853
+    Cohen's Kappa: 0.1083
+    Precision: 0.1549
+    Recall: 0.3516
+
+  Top 10 Most Important Features (SHAP):
+    4215. month_sin                               : 0.732024
+    3259. TOWD_SolarRadWm2_002m_roll12_min        : 0.122088
+    1368. TOWD_TempC_002m_lag24                   : 0.113528
+    1363. TOWD_TempC_002m_lag19                   : 0.100634
+    3488. TOWD_TempC_060m_roll24_max              : 0.078213
+    3487. TOWD_TempC_060m_roll24_min              : 0.071081
+    3712. TOWD_WDir_015m_roll24_max               : 0.062695
+    1464. TOWD_TempC_015m_lag24                   : 0.056688
+    3835. TOWF_WSpdMph_010m_roll12_min            : 0.055091
+    1481. TOWY_TempC_015m_lag17                   : 0.052489
+
+  SHAP importance saved to: ml_results_20260116_110428/models/event_E4_HighWind_Peak_gt25_24hr_xgboost_shap_importance.csv
+
+################################################################################
+# FORECAST HORIZON: 2hr
+################################################################################
+
+################################################################################
+# FORECAST HORIZON: 4hr
+################################################################################
+
+################################################################################
+# FORECAST HORIZON: 48hr
+################################################################################
